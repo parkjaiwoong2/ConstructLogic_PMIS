@@ -2,7 +2,14 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
+}
+
+.dashboard .chart-hint {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
 }
 
 .dashboard .page-header h1 {
@@ -40,6 +47,20 @@
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 1rem;
+  color: var(--color-text-muted);
+}
+
+.chart-container {
+  min-height: 200px;
+}
+
+.chart-container.chart-tall {
+  min-height: 280px;
+}
+
+.chart-empty {
+  padding: 2rem;
+  text-align: center;
   color: var(--color-text-muted);
 }
 

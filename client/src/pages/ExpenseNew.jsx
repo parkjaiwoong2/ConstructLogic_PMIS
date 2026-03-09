@@ -7,6 +7,10 @@ function formatCurrency(n) {
   return new Intl.NumberFormat('ko-KR').format(n || 0);
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function ExpenseNew() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -14,16 +18,21 @@ export default function ExpenseNew() {
 
   const [accountItems, setAccountItems] = useState([]);
   const [projects, setProjects] = useState([]);
-  const [form, setForm] = useState({
-    user_name: '배명수',
-    project_id: '',
-    project_name: '',
-    period_start: '',
-    period_end: '',
-    card_no: '',
-    items: [{ use_date: '', account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '' }],
+  const [form, setForm] = useState(() => {
+    const today = todayStr();
+    const defaultUser = typeof localStorage !== 'undefined' ? localStorage.getItem('currentUserName') || '' : '';
+    return {
+      user_name: defaultUser || '배명수',
+      project_id: '',
+      project_name: '',
+      period_start: today,
+      period_end: today,
+      card_no: '',
+      items: [{ use_date: today, account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '', mismatchWarning: null }],
+    };
   });
   const [saving, setSaving] = useState(false);
+  const [popup, setPopup] = useState(null); // { rowIdx, suggestedName, userSelectedName }
 
   useEffect(() => {
     api.getAccountItems().then(setAccountItems);
@@ -33,6 +42,11 @@ export default function ExpenseNew() {
   useEffect(() => {
     if (isEdit && id) {
       api.getDocument(id).then(doc => {
+        if (doc.status !== 'draft') {
+          alert('작성중 상태에서만 수정할 수 있습니다. 기안 취소 후 수정해 주세요.');
+          navigate(`/documents/${id}`, { replace: true });
+          return;
+        }
         setForm({
           user_name: doc.user_name,
           project_id: doc.project_id,
@@ -49,12 +63,20 @@ export default function ExpenseNew() {
                 card_amount: i.card_amount,
                 cash_amount: i.cash_amount || '',
                 remark: i.remark || '',
+                mismatchWarning: null,
               }))
-            : [{ use_date: '', account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '' }],
+            : [{ use_date: todayStr(), account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '', mismatchWarning: null }],
         });
       }).catch(console.error);
     }
   }, [isEdit, id]);
+
+  const syncPeriodFromItems = (items) => {
+    const dates = items.map(i => i.use_date).filter(Boolean);
+    if (dates.length === 0) return null;
+    const minDate = dates.reduce((a, b) => (a < b ? a : b));
+    return { period_start: minDate, period_end: todayStr() };
+  };
 
   const suggestAccount = async (desc) => {
     if (!desc?.trim()) return;
@@ -64,29 +86,53 @@ export default function ExpenseNew() {
   };
 
   const addRow = () => {
-    setForm(f => ({ ...f, items: [...f.items, { use_date: '', account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '' }] }));
+    setForm(f => {
+      const nextItems = [...f.items, { use_date: todayStr(), account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '', mismatchWarning: null }];
+      const period = syncPeriodFromItems(nextItems);
+      return { ...f, items: nextItems, ...(period || {}) };
+    });
+  };
+
+  const handleDescriptionBlur = async (idx) => {
+    const row = form.items[idx];
+    const desc = (row.description || '').trim();
+    if (!desc) return;
+    const suggested = await suggestAccount(desc);
+    if (!suggested) return;
+    const userSelectedId = row.account_item_id ? String(row.account_item_id) : '';
+    const userSelectedName = row.account_item_name || '';
+    if (userSelectedId) {
+      if (String(suggested.id) === userSelectedId) return;
+      setForm(prev => {
+        const n = [...prev.items];
+        n[idx] = { ...n[idx], mismatchWarning: { suggestedId: suggested.id, suggestedName: suggested.name } };
+        return { ...prev, items: n };
+      });
+      setPopup({ rowIdx: idx, suggestedName: suggested.name, userSelectedName });
+    } else {
+      setForm(prev => {
+        const n = [...prev.items];
+        n[idx] = { ...n[idx], account_item_id: suggested.id, account_item_name: suggested.name, mismatchWarning: null };
+        return { ...prev, items: n };
+      });
+    }
   };
 
   const updateRow = (idx, field, value) => {
     setForm(f => {
       const next = [...f.items];
       next[idx] = { ...next[idx], [field]: value };
-      if (field === 'description') {
-        suggestAccount(value).then(r => {
-          if (r) {
-            setForm(prev => {
-              const n = [...prev.items];
-              n[idx] = { ...n[idx], account_item_id: r.id, account_item_name: r.name };
-              return { ...prev, items: n };
-            });
-          }
-        });
-      }
       if (field === 'account_item_id') {
+        next[idx].mismatchWarning = null;
         const ai = accountItems.find(a => a.id === parseInt(value, 10));
         if (ai) next[idx].account_item_name = ai.name;
       }
-      return { ...f, items: next };
+      const updated = { ...f, items: next };
+      if (field === 'use_date') {
+        const period = syncPeriodFromItems(next);
+        if (period) Object.assign(updated, period);
+      }
+      return updated;
     });
   };
 
@@ -105,7 +151,7 @@ export default function ExpenseNew() {
     e.preventDefault();
     const items = form.items
       .filter(i => i.use_date && i.account_item_id && (i.card_amount || i.cash_amount))
-      .map(i => ({
+      .map(({ mismatchWarning, ...i }) => ({
         use_date: i.use_date,
         account_item_id: i.account_item_id,
         account_item_name: i.account_item_name,
@@ -120,13 +166,20 @@ export default function ExpenseNew() {
     }
     setSaving(true);
     try {
+      let docId = id;
       if (isEdit) {
         await api.updateDocument(id, { ...form, items });
         alert('저장되었습니다.');
       } else {
         const r = await api.createDocument({ ...form, items });
+        docId = r.id;
         alert('저장되었습니다.');
-        navigate(`/documents/${r.id}`);
+        navigate(`/documents/${docId}`);
+      }
+      if (window.confirm('결재를 요청하시겠습니까? (결재함에 올라갑니다)')) {
+        await api.submitDocument(docId);
+        alert('결재 요청되었습니다. 결재함에서 확인하실 수 있습니다.');
+        navigate(`/documents/${docId}`);
       }
     } catch (err) {
       alert(err.message || '저장 실패');
@@ -191,7 +244,7 @@ export default function ExpenseNew() {
               </thead>
               <tbody>
                 {form.items.map((row, idx) => (
-                  <tr key={idx}>
+                  <tr key={idx} className={row.mismatchWarning ? 'row-mismatch' : ''}>
                     <td>
                       <input type="date" value={row.use_date} onChange={e => updateRow(idx, 'use_date', e.target.value)} />
                     </td>
@@ -210,9 +263,10 @@ export default function ExpenseNew() {
                     </td>
                     <td>
                       <input
-                        placeholder="세부사용내역 (입력 시 항목 자동 추천)"
+                        placeholder="세부사용내역 (입력 완료 후 항목 추천)"
                         value={row.description}
                         onChange={e => updateRow(idx, 'description', e.target.value)}
+                        onBlur={() => handleDescriptionBlur(idx)}
                       />
                     </td>
                     <td>
@@ -250,6 +304,20 @@ export default function ExpenseNew() {
           <button type="button" className="btn btn-secondary" onClick={() => navigate(-1)}>취소</button>
         </div>
       </form>
+
+      {popup && (
+        <div className="popup-overlay" onClick={() => setPopup(null)}>
+          <div className="popup-box" onClick={e => e.stopPropagation()}>
+            <h3>항목 확인</h3>
+            <p>
+              세부사용내역을 기준으로 <strong>"{popup.suggestedName}"</strong>이(가) 추천되었으나,
+              현재 <strong>"{popup.userSelectedName}"</strong>이(가) 선택되어 있습니다.
+            </p>
+            <p className="popup-hint">해당 행이 빨간색으로 표시됩니다. 필요시 항목을 변경해 주세요.</p>
+            <button type="button" className="btn btn-primary" onClick={() => setPopup(null)}>확인</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

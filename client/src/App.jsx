@@ -6,6 +6,7 @@ import DocumentList from './pages/DocumentList';
 import ImportCsv from './pages/ImportCsv';
 import DocumentDetail from './pages/DocumentDetail';
 import ApprovalList from './pages/ApprovalList';
+import DashboardDetail from './pages/DashboardDetail';
 import Masters from './pages/Masters';
 import './App.css';
 
@@ -14,6 +15,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
+        <Route path="dashboard/detail" element={<DashboardDetail />} />
         <Route path="expense/new" element={<ExpenseNew />} />
         <Route path="expense/:id/edit" element={<ExpenseNew />} />
         <Route path="documents" element={<DocumentList />} />

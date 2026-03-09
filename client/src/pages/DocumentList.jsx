@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import './DocumentList.css';
 
+const CURRENT_USER_KEY = 'currentUserName';
+
 function formatCurrency(n) {
   return new Intl.NumberFormat('ko-KR').format(n || 0);
 }
@@ -17,15 +19,56 @@ const statusMap = {
 export default function DocumentList() {
   const [docs, setDocs] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [tab, setTab] = useState('all'); // 'all' | 'mine'
+  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
   const [filter, setFilter] = useState({ status: '', project: '' });
+  const [submitting, setSubmitting] = useState(null);
+  const [withdrawing, setWithdrawing] = useState(null);
 
-  useEffect(() => {
-    api.getDocuments(filter).then(setDocs);
-  }, [filter.status, filter.project]);
+  const effectiveFilter = {
+    ...filter,
+    user_name: tab === 'mine' && currentUser ? currentUser : '',
+  };
+
+  const loadDocs = () => api.getDocuments(effectiveFilter).then(setDocs);
+  useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.user_name]);
 
   useEffect(() => {
     api.getProjects().then(setProjects);
+    api.getUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
+
+  useEffect(() => {
+    if (currentUser) localStorage.setItem(CURRENT_USER_KEY, currentUser);
+  }, [currentUser]);
+
+  const handleSubmit = async (docId) => {
+    setSubmitting(docId);
+    try {
+      await api.submitDocument(docId);
+      alert('결재 요청되었습니다. 결재함에서 확인하실 수 있습니다.');
+      loadDocs();
+    } catch (err) {
+      alert(err.message || '결재 요청 실패');
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const handleWithdraw = async (docId) => {
+    if (!confirm('기안을 취소하시겠습니까? 작성중으로 돌아가 수정할 수 있습니다.')) return;
+    setWithdrawing(docId);
+    try {
+      await api.withdrawDocument(docId);
+      alert('기안이 취소되었습니다.');
+      loadDocs();
+    } catch (err) {
+      alert(err.message || '기안 취소 실패');
+    } finally {
+      setWithdrawing(null);
+    }
+  };
 
   return (
     <div className="document-list">
@@ -33,6 +76,38 @@ export default function DocumentList() {
         <h1>결재 문서</h1>
         <Link to="/expense/new" className="btn btn-primary">+ 새 문서 작성</Link>
       </header>
+      <p className="subtitle">작성중 문서는 [결재 요청] 버튼을 눌러야 결재함에 올라갑니다. 결재대기 문서는 [기안 취소]로 수정이 가능합니다.</p>
+
+      <div className="user-tabs-row">
+        <div className="current-user-select">
+          <label>현재 사용자</label>
+          <input
+            list="user-list"
+            value={currentUser}
+            onChange={e => setCurrentUser(e.target.value)}
+            placeholder="등록할 사용자 선택/입력"
+          />
+          <datalist id="user-list">
+            {users.map(u => <option key={u} value={u} />)}
+          </datalist>
+        </div>
+        <div className="doc-tabs">
+          <button
+            type="button"
+            className={`tab ${tab === 'all' ? 'active' : ''}`}
+            onClick={() => setTab('all')}
+          >
+            전체
+          </button>
+          <button
+            type="button"
+            className={`tab ${tab === 'mine' ? 'active' : ''}`}
+            onClick={() => setTab('mine')}
+          >
+            내가 등록한 문서
+          </button>
+        </div>
+      </div>
 
       <div className="filters">
         <select value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}>
@@ -77,7 +152,27 @@ export default function DocumentList() {
                   <td>
                     <Link to={`/documents/${d.id}`} className="link">보기</Link>
                     {d.status === 'draft' && (
-                      <Link to={`/expense/${d.id}/edit`} className="link ml">수정</Link>
+                      <>
+                        <button
+                          type="button"
+                          className="link btn-link ml"
+                          onClick={() => handleSubmit(d.id)}
+                          disabled={submitting === d.id}
+                        >
+                          {submitting === d.id ? '요청 중...' : '결재 요청'}
+                        </button>
+                        <Link to={`/expense/${d.id}/edit`} className="link ml">수정</Link>
+                      </>
+                    )}
+                    {d.status === 'pending' && (
+                      <button
+                        type="button"
+                        className="link btn-link ml"
+                        onClick={() => handleWithdraw(d.id)}
+                        disabled={withdrawing === d.id}
+                      >
+                        {withdrawing === d.id ? '취소 중...' : '기안 취소'}
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -85,7 +180,13 @@ export default function DocumentList() {
             })}
           </tbody>
         </table>
-        {docs.length === 0 && <div className="empty">결재 문서가 없습니다.</div>}
+        {docs.length === 0 && (
+          <div className="empty">
+            {tab === 'mine' && !currentUser
+              ? '현재 사용자를 선택한 후 "내가 등록한 문서"에서 조회할 수 있습니다.'
+              : '결재 문서가 없습니다.'}
+          </div>
+        )}
       </div>
     </div>
   );

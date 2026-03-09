@@ -10,6 +10,62 @@
   font-weight: 600;
 }
 
+.document-list .subtitle {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin: -0.5rem 0 1rem;
+}
+
+.user-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 1rem;
+}
+
+.current-user-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.current-user-select label {
+  font-weight: 600;
+  color: #475569;
+}
+
+.current-user-select input {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  min-width: 12rem;
+}
+
+.doc-tabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.doc-tabs .tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.doc-tabs .tab:hover {
+  background: #f1f5f9;
+}
+
+.doc-tabs .tab.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
 .filters {
   display: flex;
   gap: 0.75rem;
@@ -59,6 +115,24 @@
 
 .data-table .link.ml {
   margin-left: 0.25rem;
+}
+
+.data-table .btn-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+
+.data-table .btn-link:hover {
+  text-decoration: underline;
+}
+
+.data-table .btn-link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .empty {

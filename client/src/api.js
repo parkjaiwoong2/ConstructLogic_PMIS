@@ -22,7 +22,9 @@ export const api = {
   createDocument: (body) => fetchJson(`${API}/documents`, { method: 'POST', body: JSON.stringify(body) }),
   updateDocument: (id, body) => fetchJson(`${API}/documents/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   submitDocument: (id) => fetchJson(`${API}/documents/${id}/submit`, { method: 'POST' }),
+  withdrawDocument: (id) => fetchJson(`${API}/documents/${id}/withdraw`, { method: 'POST' }),
   approveDocument: (id, body) => fetchJson(`${API}/documents/${id}/approve`, { method: 'POST', body: JSON.stringify(body) }),
+  getUsers: () => fetchJson(`${API}/users`),
   getExpenses: (params) => {
     const q = new URLSearchParams(params).toString();
     return fetchJson(`${API}/expenses${q ? '?' + q : ''}`);

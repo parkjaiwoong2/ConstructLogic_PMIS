@@ -1,0 +1,120 @@
+.dashboard-detail .filter-section {
+  margin-bottom: 1.5rem;
+  background: #f8fafc;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.dashboard-detail .filter-section h2 {
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+  color: #334155;
+  font-weight: 700;
+}
+
+.dashboard-detail .filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.dashboard-detail .filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard-detail .filter-row label {
+  min-width: 5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e40af;
+  letter-spacing: -0.01em;
+}
+
+.dashboard-detail .filter-row input,
+.dashboard-detail .filter-row select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: #fff;
+  color: #1e293b;
+}
+
+.dashboard-detail .filter-row input:focus,
+.dashboard-detail .filter-row select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.15);
+}
+
+.dashboard-detail .filter-row input[type="date"] {
+  width: 10rem;
+}
+
+.dashboard-detail .filter-row span {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.dashboard-detail .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.dashboard-detail .page-header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.detail-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.detail-summary span:first-child {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.detail-summary .total {
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.dashboard-detail .data-table th,
+.dashboard-detail .data-table td {
+  padding: 0.6rem 0.75rem;
+}
+
+.dashboard-detail .data-table thead th {
+  background: #1e40af;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-bottom: 2px solid #1e3a8a;
+}
+
+.dashboard-detail .data-table tbody td {
+  color: #334155;
+  background: #fff;
+}
+
+.dashboard-detail .data-table tbody tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.dashboard-detail .data-table tbody tr:hover td {
+  background: #eff6ff;
+}

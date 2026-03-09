@@ -51,11 +51,22 @@ export default function DocumentDetail() {
     }
   };
 
+  const handleWithdraw = async () => {
+    if (!confirm('기안을 취소하시겠습니까? 작성중으로 돌아가 수정할 수 있습니다.')) return;
+    try {
+      await api.withdrawDocument(id);
+      api.getDocument(id).then(setDoc);
+    } catch (err) {
+      alert(err.message || '기안 취소 실패');
+    }
+  };
+
   if (!doc) return <div className="page-loading">로딩 중...</div>;
 
   const canApprove = ['pending'].includes(doc.status);
   const canEdit = doc.status === 'draft';
   const canSubmit = doc.status === 'draft';
+  const canWithdraw = doc.status === 'pending';
 
   return (
     <div className="document-detail">
@@ -64,6 +75,7 @@ export default function DocumentDetail() {
         <div className="header-actions">
           {canEdit && <Link to={`/expense/${id}/edit`} className="btn btn-secondary">수정</Link>}
           {canSubmit && <button className="btn btn-primary" onClick={handleSubmit}>결재 요청</button>}
+          {canWithdraw && <button className="btn btn-secondary" onClick={handleWithdraw}>기안 취소</button>}
         </div>
       </header>
 

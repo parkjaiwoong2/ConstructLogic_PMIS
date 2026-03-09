@@ -9,23 +9,56 @@ export default function ImportCsv() {
   const [userName, setUserName] = useState('배명수');
   const [importing, setImporting] = useState(false);
 
+  const parseCsvLine = (line) => {
+    const cols = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+      } else if ((ch === ',' || ch === '\t') && !inQuotes) {
+        cols.push(cur.trim().replace(/^"|"$/g, ''));
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cols.push(cur.trim().replace(/^"|"$/g, ''));
+    return cols;
+  };
+
   const parseCsv = (csvText) => {
     const lines = csvText.trim().split(/\r?\n/);
     const rows = [];
-    for (let i = 6; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!line.trim()) continue;
-      const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-      const useDate = cols[0];
+      const cols = parseCsvLine(line);
+      const useDate = (cols[0] || '').trim();
       const projectName = (cols[1] || '').trim();
       const accountName = (cols[2] || '').trim();
       const desc = (cols[3] || '').trim();
-      const card = cols[4] || '';
-      const cash = cols[5] || '';
-      if (!useDate || useDate === '날    짜' || useDate.includes('합  계') || useDate.includes('합    계')) continue;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(useDate) || /^\d{4}\/\d{2}\/\d{2}$/.test(useDate)) {
+      let card = (cols[4] || '').trim();
+      let cash = (cols[5] || '').trim();
+      if (cols.length > 6) {
+        const rest = cols.slice(4).map(c => (c || '').trim());
+        if (rest.length === 2) {
+          card = rest[0];
+          cash = rest[1];
+        } else if (rest.length >= 3) {
+          const mid = Math.ceil(rest.length / 2);
+          card = rest.slice(0, mid).join('').replace(/,/g, '');
+          cash = rest.slice(mid).join('').replace(/,/g, '');
+        }
+      }
+      if (!useDate || /^날/.test(useDate) || useDate.includes('합') || useDate.includes('*')) continue;
+      const dateMatch = useDate.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+      if (dateMatch) {
+        const [, y, m, d] = dateMatch;
+        const normDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
         rows.push({
-          use_date: useDate.replace(/\//g, '-'),
+          use_date: normDate,
           project_name: projectName,
           account_item_name: accountName,
           description: desc,
@@ -60,7 +93,7 @@ export default function ImportCsv() {
       <header className="page-header">
         <h1>CSV 임포트</h1>
       </header>
-      <p className="desc">엑셀에서 CSV로 저장한 후 내용을 붙여넣으세요. 7행부터 데이터로 인식합니다.</p>
+      <p className="desc">엑셀에서 7행(헤더)부터 날짜~현금 열까지 선택 후 붙여넣으세요. 날짜 형식: YYYY-MM-DD</p>
       <div className="card">
         <div className="form-row">
           <label>사용자</label>

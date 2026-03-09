@@ -20,6 +20,15 @@ app.get('/api/account-items', async (req, res) => {
   }
 });
 
+app.get('/api/users', async (req, res) => {
+  try {
+    const rows = await db.query('SELECT DISTINCT user_name FROM expense_documents WHERE user_name IS NOT NULL AND user_name != \'\' ORDER BY user_name');
+    res.json(rows.map(r => r.user_name));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/projects', async (req, res) => {
   try {
     const rows = await db.query('SELECT id, code, name FROM projects ORDER BY name');
@@ -48,7 +57,7 @@ app.get('/api/suggest-account', async (req, res) => {
 });
 
 app.get('/api/documents', async (req, res) => {
-  const { status, project } = req.query;
+  const { status, project, user_name } = req.query;
   try {
     let sql = `SELECT id, doc_no, user_name, project_name, period_start, period_end,
       status, total_card_amount, total_cash_amount, created_at
@@ -56,6 +65,7 @@ app.get('/api/documents', async (req, res) => {
     const params = [];
     if (status) { params.push(status); sql += ` AND status = $${params.length}`; }
     if (project) { params.push(project); sql += ` AND project_name = $${params.length}`; }
+    if (user_name) { params.push(user_name); sql += ` AND user_name = $${params.length}`; }
     sql += ' ORDER BY created_at DESC';
     const rows = await db.query(sql, params);
     res.json(rows);
@@ -116,6 +126,9 @@ app.put('/api/documents/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id || !items?.length) return res.status(400).json({ error: '필수 항목 누락' });
   try {
+    const doc = await db.queryOne('SELECT status FROM expense_documents WHERE id = $1', [id]);
+    if (!doc) return res.status(404).json({ error: 'Not found' });
+    if (doc.status !== 'draft') return res.status(400).json({ error: '작성중 상태에서만 수정 가능합니다.' });
     let totalCard = 0, totalCash = 0;
     items.forEach(i => {
       totalCard += parseInt(i.card_amount || 0, 10);
@@ -143,7 +156,18 @@ app.put('/api/documents/:id', async (req, res) => {
 
 app.post('/api/documents/:id/submit', async (req, res) => {
   try {
-    await db.run("UPDATE expense_documents SET status='pending', updated_at=now() WHERE id=$1 AND status='draft'", [req.params.id]);
+    const r = await db.run("UPDATE expense_documents SET status='pending', updated_at=now() WHERE id=$1 AND status='draft' RETURNING id", [req.params.id]);
+    if (!r.rows?.length) return res.status(400).json({ error: '작성중 문서만 결재 요청할 수 있습니다.' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/documents/:id/withdraw', async (req, res) => {
+  try {
+    const r = await db.run("UPDATE expense_documents SET status='draft', updated_at=now() WHERE id=$1 AND status='pending' RETURNING id", [req.params.id]);
+    if (!r.rows?.length) return res.status(400).json({ error: '결재대기 상태에서만 기안 취소할 수 있습니다.' });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -163,15 +187,20 @@ app.post('/api/documents/:id/approve', async (req, res) => {
 });
 
 app.get('/api/expenses', async (req, res) => {
-  const { from, to, project, account_item_id } = req.query;
+  const { from, to, project, account_item_id, account_item_name, user_name, description } = req.query;
   try {
-    let sql = `SELECT ei.*, ed.status FROM expense_items ei
-      LEFT JOIN expense_documents ed ON ed.id = ei.document_id WHERE 1=1`;
+    let sql = `SELECT ei.id, ei.document_id, ei.use_date, ei.project_name, ei.account_item_id, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ed.status, ed.user_name
+      FROM expense_items ei
+      LEFT JOIN expense_documents ed ON ed.id = ei.document_id
+      WHERE ed.status IN ('approved','pending')`;
     const params = [];
     if (from) { params.push(from); sql += ` AND ei.use_date >= $${params.length}`; }
     if (to) { params.push(to); sql += ` AND ei.use_date <= $${params.length}`; }
     if (project) { params.push(project); sql += ` AND ei.project_name = $${params.length}`; }
     if (account_item_id) { params.push(account_item_id); sql += ` AND ei.account_item_id = $${params.length}`; }
+    else if (account_item_name) { params.push(account_item_name); sql += ` AND ei.account_item_name = $${params.length}`; }
+    if (user_name) { params.push(`%${user_name}%`); sql += ` AND ed.user_name LIKE $${params.length}`; }
+    if (description) { params.push(`%${description}%`); sql += ` AND ei.description LIKE $${params.length}`; }
     sql += ' ORDER BY ei.use_date DESC, ei.id';
     const rows = await db.query(sql, params);
     res.json(rows);
@@ -189,9 +218,9 @@ app.get('/api/dashboard/summary', async (req, res) => {
     if (to) { params.push(to); where += ` AND ei.use_date <= $${params.length}`; }
     if (project) { params.push(project); where += ` AND ei.project_name = $${params.length}`; }
     const byAccount = await db.query(`
-      SELECT ei.account_item_name, SUM(ei.total_amount)::bigint as total
+      SELECT ei.account_item_id, ei.account_item_name, SUM(ei.total_amount)::bigint as total
       FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
-      WHERE ${where} GROUP BY ei.account_item_name ORDER BY total DESC
+      WHERE ${where} GROUP BY ei.account_item_id, ei.account_item_name ORDER BY total DESC
     `, params);
     const byProject = await db.query(`
       SELECT ei.project_name, SUM(ei.total_amount)::bigint as total
@@ -213,18 +242,30 @@ app.post('/api/import/csv', async (req, res) => {
   const { rows, user_name, card_no } = req.body;
   if (!rows?.length) return res.status(400).json({ error: 'No data' });
   try {
-    const parseNum = (v) => parseInt(String(v).replace(/,/g, '').trim() || 0, 10);
+    const safeInt = (v) => {
+      if (v == null || v === '') return 0;
+      const s = String(v).replace(/,/g, '').replace(/\s/g, '').trim();
+      if (!s || /^-$/.test(s)) return 0;
+      const n = parseInt(s, 10);
+      return Number.isNaN(n) ? 0 : n;
+    };
+    const safeId = (v) => {
+      if (v == null) return null;
+      const n = parseInt(v, 10);
+      return Number.isNaN(n) ? null : n;
+    };
     const accountItems = await db.query('SELECT id, name FROM account_items');
     const nameToId = {};
     accountItems.forEach(a => { nameToId[(a.name || '').trim()] = a.id; });
     const items = rows.map(r => {
-      const card = parseNum(r.card_amount);
-      const cash = parseNum(r.cash_amount);
+      const card = safeInt(r.card_amount);
+      const cash = safeInt(r.cash_amount);
+      const aid = nameToId[(r.account_item_name || '').trim()];
       return {
         use_date: (r.use_date || '').trim(),
         project_name: (r.project_name || '').trim(),
         account_item_name: (r.account_item_name || '').trim(),
-        account_item_id: nameToId[(r.account_item_name || '').trim()] || null,
+        account_item_id: (aid != null && !Number.isNaN(aid)) ? aid : null,
         description: (r.description || '').trim(),
         card_amount: card,
         cash_amount: cash,
@@ -242,10 +283,14 @@ app.post('/api/import/csv', async (req, res) => {
     `, [docNo, user_name || 'import', project_name, dates[0], dates[dates.length - 1], card_no || null, totalCard, totalCash]);
     const docId = r.rows[0].id;
     for (const i of items) {
+      const card = safeInt(i.card_amount);
+      const cash = safeInt(i.cash_amount);
+      const total = safeInt(card + cash);
+      const aid = safeId(i.account_item_id);
       await db.run(`
         INSERT INTO expense_items (document_id, use_date, project_name, account_item_id, account_item_name, description, card_amount, cash_amount, total_amount)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      `, [docId, i.use_date, i.project_name, i.account_item_id, i.account_item_name, i.description, i.card_amount, i.cash_amount, i.card_amount + i.cash_amount]);
+      `, [docId, i.use_date, i.project_name, aid, i.account_item_name, i.description, card, cash, total]);
     }
     res.json({ id: docId, doc_no: docNo, count: items.length });
   } catch (e) {

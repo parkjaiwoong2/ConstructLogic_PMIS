@@ -19,7 +19,7 @@ export default function ApprovalList() {
       <header className="page-header">
         <h1>결재함</h1>
       </header>
-      <p className="subtitle">결재 대기 중인 문서를 승인 또는 반려할 수 있습니다.</p>
+      <p className="subtitle">결재 대기 중인 문서를 승인 또는 반려할 수 있습니다. (결재 문서 목록에서 [결재 요청]을 누른 문서만 표시됩니다)</p>
 
       <div className="card table-card">
         <table className="data-table">
