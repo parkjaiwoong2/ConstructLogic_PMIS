@@ -1,3 +1,2 @@
-// Vercel: Express 앱 직접 export (serverless-http 불필요)
 const app = require('../server/index.js');
 module.exports = app;
