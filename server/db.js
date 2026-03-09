@@ -8,8 +8,8 @@ function createPool() {
   const connStr = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (connStr) {
     const sep = connStr.includes('?') ? '&' : '?';
-    const params = isVercel ? ['pgbouncer=true', 'connection_limit=1'].join('&');
-    const url = connStr + sep + params;
+    const params = isVercel ? 'pgbouncer=true' : '';
+    const url = params ? connStr + sep + params : connStr;
     return new Pool({
       connectionString: url,
       ssl: { rejectUnauthorized: false },
@@ -19,7 +19,7 @@ function createPool() {
     });
   }
   const base = `postgresql://${process.env.DB_USER || 'postgres.lhnytsihdfsgksvoahix'}:${encodeURIComponent(process.env.DB_PASSWORD || '')}@${process.env.DB_HOST || 'aws-1-ap-southeast-2.pooler.supabase.com'}:${process.env.DB_PORT || '6543'}/${process.env.DB_NAME || 'postgres'}`;
-  const connectionString = base + (isVercel ? '?pgbouncer=true&connection_limit=1' : '');
+  const connectionString = base + (isVercel ? '?pgbouncer=true' : '');
   return new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
