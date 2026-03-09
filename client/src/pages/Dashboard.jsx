@@ -13,6 +13,8 @@ const CHART_COLORS = ['#1e5a8e', '#2a7ab8', '#0d9488', '#059669', '#d97706', '#d
 export default function Dashboard() {
   const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
@@ -20,11 +22,24 @@ export default function Dashboard() {
   });
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
-  useEffect(() => {
-    api.getDashboardSummary({ from, to }).then(setSummary).catch(console.error);
-  }, [from, to]);
+  const loadSummary = () => {
+    setLoading(true);
+    setError(null);
+    api.getDashboardSummary({ from, to })
+      .then((data) => { setSummary(data); setError(null); })
+      .catch((err) => { setError(err?.message || '데이터를 불러오지 못했습니다.'); setSummary(null); })
+      .finally(() => setLoading(false));
+  };
 
-  if (!summary) return <div className="page-loading">로딩 중...</div>;
+  useEffect(() => { loadSummary(); }, [from, to]);
+
+  if (loading && !summary) return <div className="page-loading">로딩 중...</div>;
+  if (error) return (
+    <div className="page-loading" style={{ flexDirection: 'column', gap: '1rem' }}>
+      <p style={{ color: '#dc2626' }}>{error}</p>
+      <button className="btn btn-primary" onClick={loadSummary}>다시 시도</button>
+    </div>
+  );
 
   const accountChartData = summary.byAccount?.map((a, i) => ({
     name: a.account_item_name,
