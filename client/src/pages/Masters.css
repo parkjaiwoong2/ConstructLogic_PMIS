@@ -1,0 +1,68 @@
+.masters .page-header {
+  margin-bottom: 1.5rem;
+}
+
+.masters .page-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.masters-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.masters .card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.add-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.add-form input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.add-form .btn {
+  flex-shrink: 0;
+}
+
+.master-list {
+  list-style: none;
+}
+
+.master-list li {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.master-list .code {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  min-width: 120px;
+}
+
+.master-list .name {
+  font-weight: 500;
+}
+
+.subtitle {
+  color: var(--color-text-muted);
+  margin-bottom: 1rem;
+}
+
+.btn-sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}

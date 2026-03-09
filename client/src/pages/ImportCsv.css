@@ -1,0 +1,18 @@
+.import-csv .page-header {
+  margin-bottom: 0.5rem;
+}
+
+.import-csv .desc {
+  color: var(--color-text-muted);
+  margin-bottom: 1rem;
+}
+
+.import-csv textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 1rem;
+}
