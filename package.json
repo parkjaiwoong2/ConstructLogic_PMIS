@@ -10,6 +10,7 @@
     "server": "node server/index.js",
     "client": "cd client && npm run dev",
     "build": "cd client && npm install && npm run build",
+    "start": "node server/index.js",
     "seed": "node server/scripts/seed.pg.js",
     "db:migrate": "node server/scripts/migrate.js",
     "db:init": "npm run db:migrate && npm run seed"

@@ -1,4 +1,5 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env.local') });
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -320,5 +321,19 @@ app.post('/api/account-items', async (req, res) => {
   }
 });
 
+// SPA: API가 아닌 경로는 index.html 서빙 (단일 배포용)
+const publicDir = require('path').join(__dirname, '..', 'public');
+const pathMod = require('path');
+if (require('fs').existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+}
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`API server http://localhost:${PORT}`));
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`API server http://localhost:${PORT}`));
+}
+module.exports = app;
