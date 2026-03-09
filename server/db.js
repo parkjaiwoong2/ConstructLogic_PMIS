@@ -7,15 +7,19 @@ const isVercel = !!process.env.VERCEL;
 function createPool() {
   const connStr = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (connStr) {
-    const url = isVercel && !connStr.includes('?') ? `${connStr}?workaround=supabase-pooler.vercel` : connStr;
+    const sep = connStr.includes('?') ? '&' : '?';
+    const params = isVercel ? ['pgbouncer=true', 'connection_limit=1'].join('&');
+    const url = connStr + sep + params;
     return new Pool({
       connectionString: url,
       ssl: { rejectUnauthorized: false },
       max: isVercel ? 1 : 10,
       idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: isVercel ? 8000 : 10000,
     });
   }
-  const connectionString = `postgresql://${process.env.DB_USER || 'postgres.lhnytsihdfsgksvoahix'}:${encodeURIComponent(process.env.DB_PASSWORD || '')}@${process.env.DB_HOST || 'aws-1-ap-southeast-2.pooler.supabase.com'}:${process.env.DB_PORT || '6543'}/${process.env.DB_NAME || 'postgres'}${isVercel ? '?workaround=supabase-pooler.vercel' : ''}`;
+  const base = `postgresql://${process.env.DB_USER || 'postgres.lhnytsihdfsgksvoahix'}:${encodeURIComponent(process.env.DB_PASSWORD || '')}@${process.env.DB_HOST || 'aws-1-ap-southeast-2.pooler.supabase.com'}:${process.env.DB_PORT || '6543'}/${process.env.DB_NAME || 'postgres'}`;
+  const connectionString = base + (isVercel ? '?pgbouncer=true&connection_limit=1' : '');
   return new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
