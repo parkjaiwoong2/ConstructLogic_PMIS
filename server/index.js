@@ -227,21 +227,17 @@ app.get('/api/dashboard/summary', async (req, res) => {
     if (from) { params.push(from); where += ` AND ei.use_date >= $${params.length}`; }
     if (to) { params.push(to); where += ` AND ei.use_date <= $${params.length}`; }
     if (project) { params.push(project); where += ` AND ei.project_name = $${params.length}`; }
-    const byAccount = await db.query(`
-      SELECT ei.account_item_id, ei.account_item_name, SUM(ei.total_amount)::bigint as total
-      FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
-      WHERE ${where} GROUP BY ei.account_item_id, ei.account_item_name ORDER BY total DESC
-    `, params);
-    const byProject = await db.query(`
-      SELECT ei.project_name, SUM(ei.total_amount)::bigint as total
-      FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
-      WHERE ${where} GROUP BY ei.project_name ORDER BY total DESC
-    `, params);
-    const byMonth = await db.query(`
-      SELECT to_char(ei.use_date::date, 'YYYY-MM') as month, SUM(ei.total_amount)::bigint as total
-      FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
-      WHERE ${where} GROUP BY to_char(ei.use_date::date, 'YYYY-MM') ORDER BY month
-    `, params);
+    const [byAccount, byProject, byMonth] = await Promise.all([
+      db.query(`SELECT ei.account_item_id, ei.account_item_name, SUM(ei.total_amount)::bigint as total
+        FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
+        WHERE ${where} GROUP BY ei.account_item_id, ei.account_item_name ORDER BY total DESC`, params),
+      db.query(`SELECT ei.project_name, SUM(ei.total_amount)::bigint as total
+        FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
+        WHERE ${where} GROUP BY ei.project_name ORDER BY total DESC`, params),
+      db.query(`SELECT to_char(ei.use_date::date, 'YYYY-MM') as month, SUM(ei.total_amount)::bigint as total
+        FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
+        WHERE ${where} GROUP BY to_char(ei.use_date::date, 'YYYY-MM') ORDER BY month`, params),
+    ]);
     res.json({ byAccount, byProject, byMonth });
   } catch (e) {
     res.status(500).json({ error: e.message });
