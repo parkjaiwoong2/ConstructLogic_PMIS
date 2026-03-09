@@ -12,6 +12,15 @@ app.use(express.json({ limit: '10mb' }));
 
 // ========== API 라우트 ==========
 
+app.get('/api/health', async (req, res) => {
+  try {
+    await db.query('SELECT 1');
+    res.json({ ok: true, db: 'connected' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/account-items', async (req, res) => {
   try {
     const rows = await db.query('SELECT id, code, name, display_order FROM account_items ORDER BY display_order');

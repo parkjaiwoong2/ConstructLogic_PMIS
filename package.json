@@ -1,6 +1,7 @@
 {
   "name": "construct-logic-pmis",
   "version": "1.0.0",
+  "main": "index.js",
   "description": "건설 프로젝트 관리 정보 시스템 - 카드/현금 사용내역 및 결재",
   "private": true,
   "scripts": {
