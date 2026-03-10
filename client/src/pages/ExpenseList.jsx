@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import Pagination, { PAGE_SIZE } from '../components/Pagination';
 import ProgressBar from '../components/ProgressBar';
 import './DocumentList.css';
@@ -32,14 +32,18 @@ export default function ExpenseList() {
     user_name: '',
     description: '',
   }));
+  const [includeDraft, setIncludeDraft] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(null);
 
-  const load = (pageOverride) => {
+  const load = async (pageOverride) => {
     const p = pageOverride ?? page;
     setLoading(true);
-    const params = { ...filter, limit: PAGE_SIZE, offset: (p - 1) * PAGE_SIZE };
+    await nextTick();
+    const params = { ...filter, include_draft: includeDraft ? '1' : undefined, limit: PAGE_SIZE, offset: (p - 1) * PAGE_SIZE };
     Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
-    api.getExpenses(params).then(data => {
+    try {
+      const data = await api.getExpenses(params);
       if (Array.isArray(data)) {
         setItems(data);
         setTotal(data.length);
@@ -47,10 +51,31 @@ export default function ExpenseList() {
         setItems(data.items || []);
         setTotal(data.total || 0);
       }
-    }).catch(() => { setItems([]); setTotal(0); }).finally(() => setLoading(false));
+    } catch {
+      setItems([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, [page, filter.from, filter.to, filter.project, filter.account_item_name, filter.user_name, filter.description]);
+  useEffect(() => { load(); }, [page, includeDraft, filter.from, filter.to, filter.project, filter.account_item_name, filter.user_name, filter.description]);
+
+  const handleDelete = async (docId) => {
+    if (!confirm('이 문서를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.')) return;
+    setDeleting(docId);
+    setLoading(true);
+    await nextTick();
+    try {
+      await api.deleteDocument(docId);
+      load();
+    } catch (err) {
+      alert(err.message || '삭제 실패');
+    } finally {
+      setDeleting(null);
+      setLoading(false);
+    }
+  };
   useEffect(() => { api.getProjects().then(setProjects); api.getAccountItems().then(setAccountItems); api.getUsers().then(setUsers).catch(() => []); }, []);
 
   return (
@@ -75,6 +100,10 @@ export default function ExpenseList() {
         <input type="text" value={filter.user_name} onChange={e => setFilter(f => ({ ...f, user_name: e.target.value }))} placeholder="사용자" list="exp-user-list" />
         <datalist id="exp-user-list">{users.map(u => <option key={u} value={u} />)}</datalist>
         <input type="text" value={filter.description} onChange={e => setFilter(f => ({ ...f, description: e.target.value }))} placeholder="적요" />
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <input type="checkbox" checked={includeDraft} onChange={e => setIncludeDraft(e.target.checked)} />
+          작성중 포함
+        </label>
         <button type="button" className="btn btn-secondary" onClick={() => { setPage(1); load(1); }}>조회</button>
       </div>
 
@@ -90,7 +119,8 @@ export default function ExpenseList() {
               <th>현금</th>
               <th>합계</th>
               <th>사용자</th>
-              <th>문서</th>
+              <th>상태</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +134,28 @@ export default function ExpenseList() {
                 <td>{formatCurrency(row.cash_amount)}</td>
                 <td>{formatCurrency(row.total_amount)}</td>
                 <td>{row.user_name}</td>
-                <td><Link to={`/documents/${row.document_id}`} className="link">보기</Link></td>
+                <td>
+                  {row.status === 'draft' ? (
+                    <span style={{ color: '#6b7280' }}>작성중</span>
+                  ) : row.status === 'pending' ? (
+                    <span style={{ color: '#d97706' }}>결재대기</span>
+                  ) : (
+                    <span style={{ color: '#059669' }}>승인</span>
+                  )}
+                </td>
+                <td>
+                  <Link to={`/documents/${row.document_id}`} className="link">보기</Link>
+                  {row.status === 'draft' && (
+                    <button
+                      type="button"
+                      className="link btn-link ml"
+                      onClick={() => handleDelete(row.document_id)}
+                      disabled={deleting === row.document_id}
+                    >
+                      {deleting === row.document_id ? '삭제 중...' : '삭제'}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

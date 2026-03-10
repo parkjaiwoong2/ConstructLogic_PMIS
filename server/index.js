@@ -184,6 +184,19 @@ app.post('/api/documents/:id/withdraw', async (req, res) => {
   }
 });
 
+app.delete('/api/documents/:id', async (req, res) => {
+  try {
+    const doc = await db.queryOne('SELECT status FROM expense_documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Not found' });
+    if (doc.status !== 'draft') return res.status(400).json({ error: '작성중(기안 전) 문서만 삭제할 수 있습니다.' });
+    await db.run('DELETE FROM expense_items WHERE document_id = $1', [req.params.id]);
+    await db.run('DELETE FROM expense_documents WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/documents/:id/approve', async (req, res) => {
   const { action, approver_name, comment } = req.body;
   if (!['approved', 'rejected'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
@@ -197,7 +210,7 @@ app.post('/api/documents/:id/approve', async (req, res) => {
 });
 
 app.get('/api/expenses', async (req, res) => {
-  const { from, to, project, account_item_id, account_item_name, user_name, description, limit, offset } = req.query;
+  const { from, to, project, account_item_id, account_item_name, user_name, description, include_draft, limit, offset } = req.query;
   try {
     const cond = [];
     const params = [];
@@ -208,7 +221,8 @@ app.get('/api/expenses', async (req, res) => {
     else if (account_item_name) { params.push(account_item_name); cond.push(`ei.account_item_name = $${params.length}`); }
     if (user_name) { params.push(`%${user_name}%`); cond.push(`ed.user_name LIKE $${params.length}`); }
     if (description) { params.push(`%${description}%`); cond.push(`ei.description LIKE $${params.length}`); }
-    const whereClause = "ed.status IN ('approved','pending')" + (cond.length ? ' AND ' + cond.join(' AND ') : '');
+    const statusFilter = include_draft === '1' || include_draft === 'true' ? "ed.status IN ('approved','pending','draft')" : "ed.status IN ('approved','pending')";
+    const whereClause = statusFilter + (cond.length ? ' AND ' + cond.join(' AND ') : '');
     const baseSql = `SELECT ei.id, ei.document_id, ei.use_date, ei.project_name, ei.account_item_id, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ed.status, ed.user_name
       FROM expense_items ei
       LEFT JOIN expense_documents ed ON ed.id = ei.document_id
@@ -332,6 +346,35 @@ app.post('/api/account-items', async (req, res) => {
   try {
     const r = await db.run('INSERT INTO account_items (code, name) VALUES ($1, $2) RETURNING id', [code || `ITEM-${Date.now()}`, name]);
     res.json({ id: r.rows[0].id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/account-items/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { code, name } = req.body;
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
+  try {
+    await db.run('UPDATE account_items SET code=$1, name=$2 WHERE id=$3', [code || null, name.trim(), id]);
+    await db.run('UPDATE expense_items SET account_item_name=$1 WHERE account_item_id=$2', [name.trim(), id]);
+    res.json({ id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/projects/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { code, name } = req.body;
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
+  try {
+    await db.run('UPDATE projects SET code=$1, name=$2 WHERE id=$3', [code || null, name.trim(), id]);
+    await db.run('UPDATE expense_items SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
+    await db.run('UPDATE expense_documents SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
+    res.json({ id });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
