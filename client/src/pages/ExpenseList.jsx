@@ -9,6 +9,15 @@ function formatCurrency(n) {
   return new Intl.NumberFormat('ko-KR').format(n || 0);
 }
 
+function getDefaultDateRange() {
+  const today = new Date();
+  const prevMonth23 = new Date(today.getFullYear(), today.getMonth() - 1, 23);
+  return {
+    from: prevMonth23.toISOString().slice(0, 10),
+    to: today.toISOString().slice(0, 10),
+  };
+}
+
 export default function ExpenseList() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -16,7 +25,14 @@ export default function ExpenseList() {
   const [projects, setProjects] = useState([]);
   const [accountItems, setAccountItems] = useState([]);
   const [users, setUsers] = useState([]);
-  const [filter, setFilter] = useState({ from: '', to: '', project: '', account_item_name: '', user_name: '', description: '' });
+  const [filter, setFilter] = useState(() => ({
+    ...getDefaultDateRange(),
+    project: '',
+    account_item_name: '',
+    user_name: '',
+    description: '',
+  }));
+  const [loading, setLoading] = useState(false);
 
   const load = (pageOverride) => {
     const p = pageOverride ?? page;
