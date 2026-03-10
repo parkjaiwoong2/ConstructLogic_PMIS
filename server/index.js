@@ -131,14 +131,7 @@ app.post('/api/documents', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8, $9) RETURNING id
     `, [docNo, user_name, project_id || null, project_name, period_start, period_end, card_no || null, totalCard, totalCash]);
     const docId = r.rows[0].id;
-    for (const i of items) {
-      const cardAmt = parseInt(i.card_amount || 0, 10);
-      const cashAmt = parseInt(i.cash_amount || 0, 10);
-      await db.run(`
-        INSERT INTO expense_items (document_id, use_date, project_id, project_name, account_item_id, account_item_name, description, card_amount, cash_amount, total_amount, remark)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      `, [docId, i.use_date, project_id || null, project_name, i.account_item_id, i.account_item_name, i.description, cardAmt, cashAmt, cardAmt + cashAmt, i.remark || null]);
-    }
+    await db.insertExpenseItems(null, items, docId, project_id || null, project_name);
     res.json({ id: docId, doc_no: docNo });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -164,14 +157,7 @@ app.put('/api/documents/:id', async (req, res) => {
       WHERE id=$9
     `, [user_name || '', project_id, project_name || '', period_start || '', period_end || '', card_no || null, totalCard, totalCash, id]);
     await db.run('DELETE FROM expense_items WHERE document_id = $1', [id]);
-    for (const i of items) {
-      const cardAmt = parseInt(i.card_amount || 0, 10);
-      const cashAmt = parseInt(i.cash_amount || 0, 10);
-      await db.run(`
-        INSERT INTO expense_items (document_id, use_date, project_id, project_name, account_item_id, account_item_name, description, card_amount, cash_amount, total_amount, remark)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      `, [id, i.use_date, project_id || null, project_name, i.account_item_id, i.account_item_name, i.description, cardAmt, cashAmt, cardAmt + cashAmt, i.remark || null]);
-    }
+    await db.insertExpenseItems(null, items, id, project_id || null, project_name);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -317,16 +303,12 @@ app.post('/api/import/csv', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, $8) RETURNING id
     `, [docNo, user_name || 'import', project_name, dates[0], dates[dates.length - 1], card_no || null, totalCard, totalCash]);
     const docId = r.rows[0].id;
-    for (const i of items) {
+    const csvItems = items.map(i => {
       const card = safeInt(i.card_amount);
       const cash = safeInt(i.cash_amount);
-      const total = safeInt(card + cash);
-      const aid = safeId(i.account_item_id);
-      await db.run(`
-        INSERT INTO expense_items (document_id, use_date, project_name, account_item_id, account_item_name, description, card_amount, cash_amount, total_amount)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      `, [docId, i.use_date, i.project_name, aid, i.account_item_name, i.description, card, cash, total]);
-    }
+      return { ...i, card_amount: card, cash_amount: cash, total_amount: card + cash, account_item_id: safeId(i.account_item_id) || i.account_item_id };
+    });
+    await db.insertExpenseItemsCsv(null, csvItems, docId);
     res.json({ id: docId, doc_no: docNo, count: items.length });
   } catch (e) {
     res.status(500).json({ error: e.message });

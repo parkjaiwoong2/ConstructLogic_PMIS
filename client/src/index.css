@@ -49,11 +49,14 @@ a:hover {
 
 .btn {
   padding: 0.6rem 1.2rem;
+  min-height: 44px;
   border-radius: 8px;
   font-weight: 500;
   font-size: 0.95rem;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-primary {

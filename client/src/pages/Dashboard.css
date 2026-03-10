@@ -36,6 +36,42 @@
   margin-bottom: 2rem;
 }
 
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .date-range {
+    flex-wrap: wrap;
+  }
+
+  .date-range input {
+    min-width: 0;
+    flex: 1 1 120px;
+  }
+
+  .quick-actions {
+    flex-direction: column;
+  }
+
+  .quick-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .chart-container {
+    min-height: 180px;
+  }
+
+  .chart-container.chart-tall {
+    min-height: 220px;
+  }
+
+  .list-month li {
+    width: calc(50% - 0.5rem);
+  }
+}
+
 .card {
   background: var(--color-surface);
   border-radius: 12px;
@@ -92,7 +128,7 @@
 
 .list-month li {
   width: calc(25% - 0.75rem);
-  min-width: 120px;
+  min-width: 100px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0.75rem;
