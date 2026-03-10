@@ -101,10 +101,12 @@ export default function ExpenseNew() {
             navigate(`/documents/${id}`, { replace: true });
             return;
           }
+          const projs = await api.getProjects();
+          const proj = projs?.find(p => p.id === doc.project_id || p.name === doc.project_name);
           if (!cancelled) setForm({
           user_name: doc.user_name,
-          project_id: doc.project_id,
-          project_name: doc.project_name,
+          project_id: proj?.id ?? doc.project_id,
+          project_name: proj?.name || doc.project_name,
           period_start: doc.period_start,
           period_end: doc.period_end,
           card_no: doc.card_no || '',
