@@ -9,6 +9,8 @@ module.exports = (req, res) => {
     params.delete('__path');
     const qs = params.toString();
     req.url = '/api/' + apiPath + (qs ? '?' + qs : '');
+    // Express가 수정된 URL의 query를 사용하도록 req.query 갱신
+    req.query = Object.fromEntries(new URLSearchParams(qs));
   }
   app(req, res);
 };

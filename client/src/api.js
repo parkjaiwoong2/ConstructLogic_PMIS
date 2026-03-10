@@ -30,7 +30,11 @@ export const api = {
   approveDocument: (id, body) => fetchJson(`${API}/documents/${id}/approve`, { method: 'POST', body: JSON.stringify(body) }),
   getUsers: () => fetchJson(`${API}/users`),
   getExpenses: (params) => {
-    const q = new URLSearchParams(params).toString();
+    const q = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params).map(([k, v]) => [k, v == null ? '' : String(v)])
+      )
+    ).toString();
     return fetchJson(`${API}/expenses${q ? '?' + q : ''}`);
   },
   getDashboardSummary: (params) => {

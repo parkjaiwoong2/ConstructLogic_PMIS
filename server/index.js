@@ -210,10 +210,20 @@ app.post('/api/documents/:id/approve', async (req, res) => {
 });
 
 app.get('/api/expenses', async (req, res) => {
-  const { from, to, project, account_item_id, account_item_name, user_name, description, status, limit, offset } = req.query;
+  const { from, to, project, account_item_id, account_item_name, user_name, description, limit, offset } = req.query;
+  const parsed = require('url').parse(req.url || '', true);
+  const status = (parsed.query && parsed.query.status) || req.query.status;
   try {
     const cond = [];
     const params = [];
+    const validStatuses = ['draft', 'pending', 'approved', 'rejected'];
+    const statusVal = typeof status === 'string' ? status.trim() : '';
+    if (statusVal && validStatuses.includes(statusVal)) {
+      params.push(statusVal);
+      cond.push(`ed.status = $${params.length}`);
+    } else {
+      cond.push("ed.status IN ('approved','pending','draft','rejected')");
+    }
     if (from) { params.push(from); cond.push(`ei.use_date >= $${params.length}`); }
     if (to) { params.push(to); cond.push(`ei.use_date <= $${params.length}`); }
     if (project) { params.push(project); cond.push(`ei.project_name = $${params.length}`); }
@@ -221,13 +231,6 @@ app.get('/api/expenses', async (req, res) => {
     else if (account_item_name) { params.push(account_item_name); cond.push(`ei.account_item_name = $${params.length}`); }
     if (user_name) { params.push(`%${user_name}%`); cond.push(`ed.user_name LIKE $${params.length}`); }
     if (description) { params.push(`%${description}%`); cond.push(`ei.description LIKE $${params.length}`); }
-    const validStatuses = ['draft', 'pending', 'approved', 'rejected'];
-    if (status && validStatuses.includes(status)) {
-      params.push(status);
-      cond.push(`ed.status = $${params.length}`);
-    } else {
-      cond.push("ed.status IN ('approved','pending','draft','rejected')");
-    }
     const whereClause = cond.join(' AND ');
     const baseSql = `SELECT ei.id, ei.document_id, ei.use_date, ei.project_name, ei.account_item_id, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ed.status, ed.user_name
       FROM expense_items ei

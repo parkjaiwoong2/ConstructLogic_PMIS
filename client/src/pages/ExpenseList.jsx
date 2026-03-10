@@ -35,13 +35,14 @@ export default function ExpenseList() {
   }));
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const includeDraft = !filter.status || filter.status === 'draft';
 
   const load = async (pageOverride) => {
     const p = pageOverride ?? page;
     setLoading(true);
     await nextTick();
     const params = { ...filter, limit: PAGE_SIZE, offset: (p - 1) * PAGE_SIZE };
-    Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
+    Object.keys(params).forEach(k => { if (params[k] === '' || params[k] == null) delete params[k]; });
     try {
       const data = await api.getExpenses(params);
       if (Array.isArray(data)) {
