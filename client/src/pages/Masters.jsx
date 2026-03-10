@@ -191,10 +191,12 @@ export default function Masters() {
                   <>
                     <span className="code">{a.code || '-'}</span>
                     <span className="name">{a.name}</span>
-                    <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEditAccount(a)}>수정</button>
-                    <button type="button" className="btn btn-sm btn-secondary ml" onClick={() => deleteAccount(a.id)} disabled={deletingAccount === a.id}>
-                      {deletingAccount === a.id ? '삭제 중...' : '삭제'}
-                    </button>
+                    <span className="actions ml">
+                      <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEditAccount(a)}>수정</button>
+                      <button type="button" className="btn btn-sm btn-secondary" onClick={() => deleteAccount(a.id)} disabled={deletingAccount === a.id}>
+                        {deletingAccount === a.id ? '삭제 중...' : '삭제'}
+                      </button>
+                    </span>
                   </>
                 )}
               </li>
@@ -241,10 +243,12 @@ export default function Masters() {
                   <>
                     <span className="code">{p.code || '-'}</span>
                     <span className="name">{p.name}</span>
-                    <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEditProject(p)}>수정</button>
-                    <button type="button" className="btn btn-sm btn-secondary ml" onClick={() => deleteProject(p.id)} disabled={deletingProject === p.id}>
-                      {deletingProject === p.id ? '삭제 중...' : '삭제'}
-                    </button>
+                    <span className="actions ml">
+                      <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEditProject(p)}>수정</button>
+                      <button type="button" className="btn btn-sm btn-secondary" onClick={() => deleteProject(p.id)} disabled={deletingProject === p.id}>
+                        {deletingProject === p.id ? '삭제 중...' : '삭제'}
+                      </button>
+                    </span>
                   </>
                 )}
               </li>

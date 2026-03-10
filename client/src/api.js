@@ -48,4 +48,10 @@ export const api = {
   deleteAccountItem: (id) => fetchJson(`${API}/account-items/${id}`, { method: 'DELETE' }),
   createProject: (body) => fetchJson(`${API}/projects`, { method: 'POST', body: JSON.stringify(body) }),
   importCsv: (body) => fetchJson(`${API}/import/csv`, { method: 'POST', body: JSON.stringify(body) }),
+  getUserCards: (userName) => fetchJson(`${API}/user-cards?user_name=${encodeURIComponent(userName || '')}`),
+  createUserCard: (body) => fetchJson(`${API}/user-cards`, { method: 'POST', body: JSON.stringify(body) }),
+  updateUserCard: (id, body) => fetchJson(`${API}/user-cards/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteUserCard: (id) => fetchJson(`${API}/user-cards/${id}`, { method: 'DELETE' }),
+  getUserSettings: (userName) => fetchJson(`${API}/user-settings?user_name=${encodeURIComponent(userName || '')}`),
+  updateUserSettings: (body) => fetchJson(`${API}/user-settings`, { method: 'PUT', body: JSON.stringify(body) }),
 };

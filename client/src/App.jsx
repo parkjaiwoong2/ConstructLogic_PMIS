@@ -9,6 +9,7 @@ import ApprovalList from './pages/ApprovalList';
 import ExpenseList from './pages/ExpenseList';
 import DashboardDetail from './pages/DashboardDetail';
 import Masters from './pages/Masters';
+import Settings from './pages/Settings';
 import './App.css';
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="import" element={<ImportCsv />} />
         <Route path="approval" element={<ApprovalList />} />
         <Route path="masters" element={<Masters />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   );

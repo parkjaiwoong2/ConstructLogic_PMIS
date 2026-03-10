@@ -1,14 +1,48 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, nextTick } from '../api';
 import ProgressBar from '../components/ProgressBar';
 import './ImportCsv.css';
 
+const CURRENT_USER_KEY = 'currentUserName';
+
 export default function ImportCsv() {
   const navigate = useNavigate();
   const [text, setText] = useState('');
-  const [userName, setUserName] = useState('배명수');
+  const [userName, setUserName] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
+  const [defaultCardNo, setDefaultCardNo] = useState('');
+  const [defaultProjectName, setDefaultProjectName] = useState('');
+  const [users, setUsers] = useState([]);
   const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    api.getUsers().then(setUsers).catch(() => []);
+  }, []);
+
+  useEffect(() => {
+    if (userName) localStorage.setItem(CURRENT_USER_KEY, userName);
+  }, [userName]);
+
+  useEffect(() => {
+    if (!userName?.trim()) {
+      setDefaultCardNo('');
+      setDefaultProjectName('');
+      return;
+    }
+    (async () => {
+      try {
+        const [cards, settings, projects] = await Promise.all([
+          api.getUserCards(userName),
+          api.getUserSettings(userName),
+          api.getProjects(),
+        ]);
+        const defaultCard = Array.isArray(cards) && (cards.find(c => c.is_default) || cards[0]);
+        setDefaultCardNo(defaultCard?.card_no || '');
+        const proj = projects?.find(p => p.id === settings?.default_project_id);
+        setDefaultProjectName(proj?.name || '');
+      } catch (e) { /* ignore */ }
+    })();
+  }, [userName]);
 
   const parseCsvLine = (line) => {
     const cols = [];
@@ -80,7 +114,12 @@ export default function ImportCsv() {
     setImporting(true);
     await nextTick();
     try {
-      const r = await api.importCsv({ rows, user_name: userName });
+      const r = await api.importCsv({
+        rows,
+        user_name: userName,
+        card_no: defaultCardNo || undefined,
+        project_name: defaultProjectName || undefined,
+      });
       alert(`${r.count}건 임포트 완료. 문서번호: ${r.doc_no}`);
       navigate(`/documents/${r.id}`);
     } catch (err) {
@@ -100,8 +139,21 @@ export default function ImportCsv() {
       <div className="card">
         <div className="form-row">
           <label>사용자</label>
-          <input value={userName} onChange={e => setUserName(e.target.value)} />
+          <input
+            value={userName}
+            onChange={e => setUserName(e.target.value)}
+            placeholder="사용자명"
+            list="import-user-list"
+          />
+          <datalist id="import-user-list">
+            {users.map(u => <option key={u} value={u} />)}
+          </datalist>
         </div>
+        {userName && (
+          <div className="form-row hint">
+            기본 카드: {defaultCardNo || '(없음)'} · 기본 현장: {defaultProjectName || '(없음)'}
+          </div>
+        )}
         <label>CSV 내용</label>
         <textarea
           rows={15}

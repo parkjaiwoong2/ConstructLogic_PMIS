@@ -81,6 +81,24 @@ CREATE TABLE IF NOT EXISTS account_mapping_rules (
   created_at TIMESTAMPTZ DEFAULT (now() AT TIME ZONE 'Asia/Seoul')
 );
 
+-- 사용자별 카드 (멀티 등록, 기본 설정)
+CREATE TABLE IF NOT EXISTS user_cards (
+  id SERIAL PRIMARY KEY,
+  user_name TEXT NOT NULL,
+  card_no TEXT NOT NULL,
+  label TEXT,
+  is_default BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT (now() AT TIME ZONE 'Asia/Seoul')
+);
+CREATE INDEX IF NOT EXISTS idx_user_cards_user ON user_cards(user_name);
+
+-- 사용자별 기본 설정 (기본 현장)
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_name TEXT PRIMARY KEY,
+  default_project_id INTEGER REFERENCES projects(id),
+  updated_at TIMESTAMPTZ DEFAULT (now() AT TIME ZONE 'Asia/Seoul')
+);
+
 CREATE INDEX IF NOT EXISTS idx_expense_items_document ON expense_items(document_id);
 CREATE INDEX IF NOT EXISTS idx_expense_items_date ON expense_items(use_date);
 CREATE INDEX IF NOT EXISTS idx_expense_items_project ON expense_items(project_id);

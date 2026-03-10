@@ -283,7 +283,7 @@ app.get('/api/dashboard/summary', async (req, res) => {
 });
 
 app.post('/api/import/csv', async (req, res) => {
-  const { rows, user_name, card_no } = req.body;
+  const { rows, user_name, card_no, project_name: defaultProjectName } = req.body;
   if (!rows?.length) return res.status(400).json({ error: 'No data' });
   try {
     const safeInt = (v) => {
@@ -316,7 +316,10 @@ app.post('/api/import/csv', async (req, res) => {
       };
     }).filter(i => i.use_date && i.account_item_name && (i.card_amount || i.cash_amount));
     if (items.length === 0) return res.status(400).json({ error: '유효한 데이터 없음' });
-    const project_name = items[0].project_name || '미지정';
+    const project_name = (defaultProjectName && String(defaultProjectName).trim()) || items[0].project_name || '미지정';
+    if (defaultProjectName && String(defaultProjectName).trim()) {
+      items.forEach(i => { i.project_name = defaultProjectName.trim(); });
+    }
     const dates = items.map(i => i.use_date).sort();
     const totalCard = items.reduce((s, i) => s + i.card_amount, 0);
     const totalCash = items.reduce((s, i) => s + i.cash_amount, 0);
@@ -411,6 +414,99 @@ app.delete('/api/projects/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     if (e.code === '23503') return res.status(400).json({ error: '사용 중인 현장은 삭제할 수 없습니다.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 사용자별 카드 CRUD
+app.get('/api/user-cards', async (req, res) => {
+  const user_name = req.query.user_name;
+  if (!user_name?.trim()) return res.json([]);
+  try {
+    const rows = await db.query('SELECT id, user_name, card_no, label, is_default FROM user_cards WHERE user_name = $1 ORDER BY is_default DESC, id', [user_name.trim()]);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/user-cards', async (req, res) => {
+  const { user_name, card_no, label, is_default } = req.body;
+  if (!user_name?.trim() || !card_no?.trim()) return res.status(400).json({ error: '사용자명과 카드번호 필수' });
+  try {
+    if (is_default) {
+      await db.run('UPDATE user_cards SET is_default = false WHERE user_name = $1', [user_name.trim()]);
+    }
+    const r = await db.run(
+      'INSERT INTO user_cards (user_name, card_no, label, is_default) VALUES ($1, $2, $3, $4) RETURNING id, user_name, card_no, label, is_default',
+      [user_name.trim(), (card_no || '').trim(), (label || '').trim() || null, !!is_default]
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/user-cards/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { card_no, label, is_default } = req.body;
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const row = await db.queryOne('SELECT user_name, card_no, label, is_default FROM user_cards WHERE id = $1', [id]);
+    if (!row) return res.status(404).json({ error: '카드를 찾을 수 없습니다.' });
+    if (is_default) {
+      await db.run('UPDATE user_cards SET is_default = false WHERE user_name = $1', [row.user_name]);
+    }
+    const newCardNo = card_no !== undefined ? (card_no && String(card_no).trim()) || null : row.card_no;
+    const newLabel = label !== undefined ? (label && String(label).trim()) || null : row.label;
+    const newIsDefault = is_default !== undefined ? !!is_default : row.is_default;
+    await db.run(
+      'UPDATE user_cards SET card_no = $1, label = $2, is_default = $3 WHERE id = $4',
+      [newCardNo, newLabel, newIsDefault, id]
+    );
+    const updated = await db.queryOne('SELECT id, user_name, card_no, label, is_default FROM user_cards WHERE id = $1', [id]);
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/user-cards/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const r = await db.run('DELETE FROM user_cards WHERE id = $1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: '카드를 찾을 수 없습니다.' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 사용자별 기본 설정 (기본 현장)
+app.get('/api/user-settings', async (req, res) => {
+  const user_name = req.query.user_name;
+  if (!user_name?.trim()) return res.json({ default_project_id: null });
+  try {
+    const row = await db.queryOne('SELECT default_project_id FROM user_settings WHERE user_name = $1', [user_name.trim()]);
+    res.json({ default_project_id: row?.default_project_id ?? null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/user-settings', async (req, res) => {
+  const { user_name, default_project_id } = req.body;
+  if (!user_name?.trim()) return res.status(400).json({ error: '사용자명 필수' });
+  try {
+    await db.run(
+      `INSERT INTO user_settings (user_name, default_project_id) VALUES ($1, $2)
+       ON CONFLICT (user_name) DO UPDATE SET default_project_id = $2, updated_at = now()`,
+      [user_name.trim(), default_project_id && !isNaN(parseInt(default_project_id, 10)) ? parseInt(default_project_id, 10) : null]
+    );
+    const row = await db.queryOne('SELECT default_project_id FROM user_settings WHERE user_name = $1', [user_name.trim()]);
+    res.json({ default_project_id: row?.default_project_id ?? null });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });

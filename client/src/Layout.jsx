@@ -35,6 +35,7 @@ export default function Layout() {
           <NavLink to="/documents">결재 문서</NavLink>
           <NavLink to="/approval">결재함</NavLink>
           <NavLink to="/masters">마스터 관리</NavLink>
+          <NavLink to="/settings">내 설정</NavLink>
         </nav>
       </aside>
       <main className="main">

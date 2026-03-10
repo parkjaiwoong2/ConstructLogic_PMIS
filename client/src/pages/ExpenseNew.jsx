@@ -19,6 +19,7 @@ export default function ExpenseNew() {
 
   const [accountItems, setAccountItems] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [userCards, setUserCards] = useState([]);
   const [form, setForm] = useState(() => {
     const today = todayStr();
     const defaultUser = typeof localStorage !== 'undefined' ? localStorage.getItem('currentUserName') || '' : '';
@@ -56,6 +57,36 @@ export default function ExpenseNew() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const userName = form.user_name?.trim();
+    if (!userName) {
+      setUserCards([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cardsRes, settingsRes] = await Promise.all([
+          api.getUserCards(userName),
+          api.getUserSettings(userName),
+        ]);
+        if (!cancelled) {
+          setUserCards(Array.isArray(cardsRes) ? cardsRes : []);
+          if (!isEdit && settingsRes?.default_project_id) {
+            const projList = await api.getProjects();
+            const p = projList.find(x => x.id === settingsRes.default_project_id);
+            if (p) setForm(f => ({ ...f, project_id: p.id, project_name: p.name }));
+          }
+          if (!isEdit && cardsRes?.length) {
+            const defaultCard = cardsRes.find(c => c.is_default) || cardsRes[0];
+            if (defaultCard) setForm(f => ({ ...f, card_no: defaultCard.card_no }));
+          }
+        }
+      } catch (e) { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [form.user_name, isEdit]);
 
   useEffect(() => {
     if (isEdit && id) {
@@ -254,7 +285,33 @@ export default function ExpenseNew() {
           </div>
           <div className="form-row">
             <label>카드번호</label>
-            <input placeholder="5585-****-****-****" value={form.card_no} onChange={e => setForm(f => ({ ...f, card_no: e.target.value }))} />
+            {userCards.length > 0 ? (
+              <>
+                <select
+                  value={userCards.some(c => c.card_no === form.card_no) ? form.card_no : '__direct__'}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setForm(f => ({ ...f, card_no: v === '__direct__' ? '' : v }));
+                  }}
+                >
+                  <option value="">선택</option>
+                  {userCards.map(c => (
+                    <option key={c.id} value={c.card_no}>{c.label || c.card_no}{c.is_default ? ' (기본)' : ''}</option>
+                  ))}
+                  <option value="__direct__">직접 입력</option>
+                </select>
+                {(!form.card_no || !userCards.some(c => c.card_no === form.card_no)) && (
+                  <input
+                    placeholder="5585-****-****-****"
+                    value={form.card_no}
+                    onChange={e => setForm(f => ({ ...f, card_no: e.target.value }))}
+                    style={{ minWidth: 180 }}
+                  />
+                )}
+              </>
+            ) : (
+              <input placeholder="5585-****-****-****" value={form.card_no} onChange={e => setForm(f => ({ ...f, card_no: e.target.value }))} />
+            )}
           </div>
         </section>
 

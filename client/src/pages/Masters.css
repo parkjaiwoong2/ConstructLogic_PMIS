@@ -71,6 +71,11 @@
   margin-left: auto;
 }
 
+.master-list .actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
 .edit-inline {
   display: flex;
   gap: 0.5rem;
