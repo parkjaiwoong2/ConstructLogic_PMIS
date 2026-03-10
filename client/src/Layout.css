@@ -1,6 +1,45 @@
 .layout {
   display: flex;
   min-height: 100vh;
+  position: relative;
+}
+
+/* 모바일: 햄버거 버튼 */
+.menu-toggle {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 100;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.menu-toggle span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
+}
+
+/* 모바일: 사이드바 오버레이 (메뉴 열림 시에만 렌더됨) */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  background: rgba(0,0,0,0.4);
 }
 
 .sidebar {
@@ -8,17 +47,70 @@
   background: linear-gradient(180deg, #1e5a8e 0%, #0d3d6b 100%);
   color: #fff;
   flex-shrink: 0;
+  transition: transform 0.25s ease;
 }
 
-.logo {
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 1.25rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.sidebar-header .logo {
   font-weight: 700;
   font-size: 1.1rem;
-  border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.sidebar-close {
+  display: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .main {
   flex: 1;
   padding: 1.5rem 2rem;
   overflow: auto;
+}
+
+/* 모바일 스타일 */
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 200;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 12px rgba(0,0,0,0.15);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .main {
+    padding: 1rem;
+    padding-top: 4.5rem; /* 햄버거 버튼 아래 공간 */
+  }
 }
