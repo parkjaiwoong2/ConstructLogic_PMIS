@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import ProgressBar from '../components/ProgressBar';
 import './Masters.css';
 
 export default function Masters() {
   const [accountItems, setAccountItems] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [newAccount, setNewAccount] = useState({ code: '', name: '' });
   const [newProject, setNewProject] = useState({ code: '', name: '' });
 
   const load = () => {
-    api.getAccountItems().then(setAccountItems);
-    api.getProjects().then(setProjects);
+    setLoading(true);
+    Promise.all([api.getAccountItems(), api.getProjects()]).then(([items, projs]) => {
+      setAccountItems(items);
+      setProjects(projs);
+    }).catch(console.error).finally(() => setLoading(false));
   };
 
   useEffect(load, []);
@@ -18,29 +23,36 @@ export default function Masters() {
   const addAccount = async (e) => {
     e.preventDefault();
     if (!newAccount.name?.trim()) return;
+    setLoading(true);
     try {
       await api.createAccountItem({ code: newAccount.code || undefined, name: newAccount.name });
       setNewAccount({ code: '', name: '' });
       load();
     } catch (err) {
       alert(err.message || '등록 실패');
+    } finally {
+      setLoading(false);
     }
   };
 
   const addProject = async (e) => {
     e.preventDefault();
     if (!newProject.name?.trim()) return;
+    setLoading(true);
     try {
       await api.createProject({ code: newProject.code || undefined, name: newProject.name });
       setNewProject({ code: '', name: '' });
       load();
     } catch (err) {
       alert(err.message || '등록 실패');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="masters">
+      <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>마스터 관리</h1>
       </header>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import Pagination, { PAGE_SIZE } from '../components/Pagination';
+import ProgressBar from '../components/ProgressBar';
 import './DocumentList.css';
 
 function formatCurrency(n) {
@@ -19,6 +20,7 @@ export default function ExpenseList() {
 
   const load = (pageOverride) => {
     const p = pageOverride ?? page;
+    setLoading(true);
     const params = { ...filter, limit: PAGE_SIZE, offset: (p - 1) * PAGE_SIZE };
     Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
     api.getExpenses(params).then(data => {
@@ -29,7 +31,7 @@ export default function ExpenseList() {
         setItems(data.items || []);
         setTotal(data.total || 0);
       }
-    }).catch(() => { setItems([]); setTotal(0); });
+    }).catch(() => { setItems([]); setTotal(0); }).finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [page, filter.from, filter.to, filter.project, filter.account_item_name, filter.user_name, filter.description]);
@@ -37,6 +39,7 @@ export default function ExpenseList() {
 
   return (
     <div className="document-list">
+      <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>사용내역 조회</h1>
       </header>

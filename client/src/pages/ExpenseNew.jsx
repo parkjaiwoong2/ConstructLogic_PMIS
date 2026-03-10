@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import ProgressBar from '../components/ProgressBar';
 import './ExpenseNew.css';
 
 function formatCurrency(n) {
@@ -31,16 +32,22 @@ export default function ExpenseNew() {
       items: [{ use_date: today, account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '', mismatchWarning: null }],
     };
   });
+  const [loadingMasters, setLoadingMasters] = useState(true);
+  const [loadingDoc, setLoadingDoc] = useState(false);
   const [saving, setSaving] = useState(false);
   const [popup, setPopup] = useState(null); // { rowIdx, suggestedName, userSelectedName }
 
   useEffect(() => {
-    api.getAccountItems().then(setAccountItems);
-    api.getProjects().then(setProjects);
+    setLoadingMasters(true);
+    Promise.all([api.getAccountItems(), api.getProjects()]).then(([items, projs]) => {
+      setAccountItems(items);
+      setProjects(projs);
+    }).catch(console.error).finally(() => setLoadingMasters(false));
   }, []);
 
   useEffect(() => {
     if (isEdit && id) {
+      setLoadingDoc(true);
       api.getDocument(id).then(doc => {
         if (doc.status !== 'draft') {
           alert('작성중 상태에서만 수정할 수 있습니다. 기안 취소 후 수정해 주세요.');
@@ -67,7 +74,7 @@ export default function ExpenseNew() {
               }))
             : [{ use_date: todayStr(), account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '', mismatchWarning: null }],
         });
-      }).catch(console.error);
+      }).catch(console.error).finally(() => setLoading(false));
     }
   }, [isEdit, id]);
 
@@ -191,8 +198,11 @@ export default function ExpenseNew() {
   const totalCard = form.items.reduce((s, i) => s + (parseInt(String(i.card_amount).replace(/,/g, ''), 10) || 0), 0);
   const totalCash = form.items.reduce((s, i) => s + (parseInt(String(i.cash_amount).replace(/,/g, ''), 10) || 0), 0);
 
+  const isLoading = loadingMasters || loadingDoc || saving;
+
   return (
     <div className="expense-new">
+      <ProgressBar loading={isLoading} />
       <header className="page-header">
         <h1>{isEdit ? '사용내역 수정' : '카드/현금 사용내역 입력'}</h1>
       </header>

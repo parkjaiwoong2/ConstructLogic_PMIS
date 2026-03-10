@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import Pagination, { PAGE_SIZE } from '../components/Pagination';
+import ProgressBar from '../components/ProgressBar';
 import './DocumentList.css';
 
 const CURRENT_USER_KEY = 'currentUserName';
@@ -26,6 +27,7 @@ export default function DocumentList() {
   const [tab, setTab] = useState('all'); // 'all' | 'mine'
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
   const [filter, setFilter] = useState({ status: '', project: '' });
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(null);
   const [withdrawing, setWithdrawing] = useState(null);
 
@@ -60,6 +62,7 @@ export default function DocumentList() {
 
   const handleSubmit = async (docId) => {
     setSubmitting(docId);
+    setLoading(true);
     try {
       await api.submitDocument(docId);
       alert('결재 요청되었습니다. 결재함에서 확인하실 수 있습니다.');
@@ -74,6 +77,7 @@ export default function DocumentList() {
   const handleWithdraw = async (docId) => {
     if (!confirm('기안을 취소하시겠습니까? 작성중으로 돌아가 수정할 수 있습니다.')) return;
     setWithdrawing(docId);
+    setLoading(true);
     try {
       await api.withdrawDocument(docId);
       alert('기안이 취소되었습니다.');
@@ -82,11 +86,13 @@ export default function DocumentList() {
       alert(err.message || '기안 취소 실패');
     } finally {
       setWithdrawing(null);
+      setLoading(false);
     }
   };
 
   return (
     <div className="document-list">
+      <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>결재 문서</h1>
         <Link to="/expense/new" className="btn btn-primary">+ 새 문서 작성</Link>

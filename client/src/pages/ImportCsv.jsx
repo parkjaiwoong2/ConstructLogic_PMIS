@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import ProgressBar from '../components/ProgressBar';
 import './ImportCsv.css';
 
 export default function ImportCsv() {
@@ -90,6 +91,7 @@ export default function ImportCsv() {
 
   return (
     <div className="import-csv">
+      <ProgressBar loading={importing} />
       <header className="page-header">
         <h1>CSV 임포트</h1>
       </header>

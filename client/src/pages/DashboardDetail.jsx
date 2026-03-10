@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
+import ProgressBar from '../components/ProgressBar';
 import './DashboardDetail.css';
 
 function formatCurrency(n) {
@@ -116,6 +117,7 @@ export default function DashboardDetail() {
 
   return (
     <div className="dashboard-detail">
+      <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>{getTitle()}</h1>
         <Link to="/" className="btn btn-secondary">← 대시보드</Link>

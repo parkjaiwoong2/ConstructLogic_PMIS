@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../api';
+import ProgressBar from '../components/ProgressBar';
 import './DocumentDetail.css';
 
 function formatCurrency(n) {
@@ -18,18 +19,21 @@ export default function DocumentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [doc, setDoc] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
   const [action, setAction] = useState('');
   const [comment, setComment] = useState('');
   const [approverName, setApproverName] = useState('결재자');
 
   useEffect(() => {
-    api.getDocument(id).then(setDoc).catch(() => setDoc(null));
+    setLoading(true);
+    api.getDocument(id).then(d => { setDoc(d); setLoading(false); }).catch(() => { setDoc(null); setLoading(false); });
   }, [id]);
 
   const handleApprove = async () => {
     if (!['approved', 'rejected'].includes(action)) return;
     setApproving(true);
+    setLoading(true);
     try {
       await api.approveDocument(id, { action, approver_name: approverName, comment });
       api.getDocument(id).then(setDoc);
@@ -43,25 +47,29 @@ export default function DocumentDetail() {
   };
 
   const handleSubmit = async () => {
+    setLoading(true);
     try {
       await api.submitDocument(id);
-      api.getDocument(id).then(setDoc);
+      const d = await api.getDocument(id);
+      setDoc(d);
     } catch (err) {
       alert(err.message || '제출 실패');
-    }
+    } finally { setLoading(false); }
   };
 
   const handleWithdraw = async () => {
     if (!confirm('기안을 취소하시겠습니까? 작성중으로 돌아가 수정할 수 있습니다.')) return;
+    setLoading(true);
     try {
       await api.withdrawDocument(id);
-      api.getDocument(id).then(setDoc);
+      const d = await api.getDocument(id);
+      setDoc(d);
     } catch (err) {
       alert(err.message || '기안 취소 실패');
-    }
+    } finally { setLoading(false); }
   };
 
-  if (!doc) return <div className="page-loading">로딩 중...</div>;
+  if (!doc) return <div className="page-loading">{loading ? '로딩 중...' : '데이터를 불러올 수 없습니다.'}</div>;
 
   const canApprove = ['pending'].includes(doc.status);
   const canEdit = doc.status === 'draft';
@@ -70,6 +78,7 @@ export default function DocumentDetail() {
 
   return (
     <div className="document-detail">
+      <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>결재 문서 상세</h1>
         <div className="header-actions">

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { api } from '../api';
+import ProgressBar from '../components/ProgressBar';
 import './Dashboard.css';
 
 function formatCurrency(n) {
@@ -66,6 +67,7 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
+      <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>CEO 대시보드</h1>
         <span className="chart-hint">그래프를 클릭하면 상세 내역을 볼 수 있습니다</span>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import Pagination, { PAGE_SIZE } from '../components/Pagination';
+import ProgressBar from '../components/ProgressBar';
 import './DocumentList.css';
 
 function formatCurrency(n) {
@@ -12,8 +13,10 @@ export default function ApprovalList() {
   const [docs, setDocs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     api.getDocuments({ status: 'pending', limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }).then(data => {
       if (Array.isArray(data)) {
         setDocs(data);
@@ -27,6 +30,7 @@ export default function ApprovalList() {
 
   return (
     <div className="document-list">
+      <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>결재함</h1>
       </header>
