@@ -163,7 +163,7 @@ export default function DashboardDetail() {
       </section>
 
       {loading ? (
-        <div className="page-loading">로딩 중...</div>
+        <div className="page-loading" />
       ) : (
         <div className="card table-card">
           <div className="detail-summary">

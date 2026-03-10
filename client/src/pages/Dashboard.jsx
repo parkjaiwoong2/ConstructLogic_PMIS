@@ -34,7 +34,7 @@ export default function Dashboard() {
 
   useEffect(() => { loadSummary(); }, [from, to]);
 
-  if (loading && !summary) return <div className="page-loading">로딩 중...</div>;
+  if (loading && !summary) return <ProgressBar loading={loading} />;
   if (error) return (
     <div className="page-loading" style={{ flexDirection: 'column', gap: '1rem' }}>
       <p style={{ color: '#dc2626' }}>{error}</p>

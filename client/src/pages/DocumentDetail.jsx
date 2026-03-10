@@ -69,7 +69,12 @@ export default function DocumentDetail() {
     } finally { setLoading(false); }
   };
 
-  if (!doc) return <div className="page-loading">{loading ? '로딩 중...' : '데이터를 불러올 수 없습니다.'}</div>;
+  if (!doc) return (
+    <>
+      <ProgressBar loading={loading} />
+      {!loading && <div className="page-loading">데이터를 불러올 수 없습니다.</div>}
+    </>
+  );
 
   const canApprove = ['pending'].includes(doc.status);
   const canEdit = doc.status === 'draft';
