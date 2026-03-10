@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import Pagination, { PAGE_SIZE } from '../components/Pagination';
 import ProgressBar from '../components/ProgressBar';
 import './DocumentList.css';
@@ -16,16 +16,27 @@ export default function ApprovalList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    api.getDocuments({ status: 'pending', limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }).then(data => {
-      if (Array.isArray(data)) {
-        setDocs(data);
-        setTotal(data.length);
-      } else {
-        setDocs(data.items || []);
-        setTotal(data.total || 0);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      await nextTick();
+      try {
+        const data = await api.getDocuments({ status: 'pending', limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE });
+        if (cancelled) return;
+        if (Array.isArray(data)) {
+          setDocs(data);
+          setTotal(data.length);
+        } else {
+          setDocs(data.items || []);
+          setTotal(data.total || 0);
+        }
+      } catch {
+        if (!cancelled) { setDocs([]); setTotal(0); }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    });
+    })();
+    return () => { cancelled = true; };
   }, [page]);
 
   return (

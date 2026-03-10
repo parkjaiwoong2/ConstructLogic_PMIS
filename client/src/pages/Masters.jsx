@@ -63,8 +63,10 @@ export default function Masters() {
     }
   };
 
-  const [editingAccount, setEditingAccount] = useState(null); // { id, code, name }
-  const [editingProject, setEditingProject] = useState(null); // { id, code, name }
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [editingProject, setEditingProject] = useState(null);
+  const [deletingAccount, setDeletingAccount] = useState(null);
+  const [deletingProject, setDeletingProject] = useState(null);
 
   const startEditAccount = (a) => setEditingAccount({ id: a.id, code: a.code || '', name: a.name });
   const startEditProject = (p) => setEditingProject({ id: p.id, code: p.code || '', name: p.name });
@@ -102,12 +104,47 @@ export default function Masters() {
     }
   };
 
+  const deleteAccount = async (id) => {
+    if (!confirm('이 항목을 삭제하시겠습니까?')) return;
+    setDeletingAccount(id);
+    setLoading(true);
+    await nextTick();
+    try {
+      await api.deleteAccountItem(id);
+      setEditingAccount(null);
+      load();
+    } catch (err) {
+      alert(err.message || '삭제 실패');
+    } finally {
+      setDeletingAccount(null);
+      setLoading(false);
+    }
+  };
+
+  const deleteProject = async (id) => {
+    if (!confirm('이 현장을 삭제하시겠습니까?')) return;
+    setDeletingProject(id);
+    setLoading(true);
+    await nextTick();
+    try {
+      await api.deleteProject(id);
+      setEditingProject(null);
+      load();
+    } catch (err) {
+      alert(err.message || '삭제 실패');
+    } finally {
+      setDeletingProject(null);
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="masters">
       <ProgressBar loading={loading} />
       <header className="page-header">
         <h1>마스터 관리</h1>
       </header>
+      <p className="subtitle">사용 중인 항목/현장은 삭제할 수 없습니다.</p>
       {error && (
         <div style={{ padding: '1rem', background: '#fef2f2', color: '#dc2626', borderRadius: 8, marginBottom: '1rem' }}>
           {error} <button type="button" className="btn btn-sm btn-secondary" onClick={load}>다시 시도</button>
@@ -154,7 +191,10 @@ export default function Masters() {
                   <>
                     <span className="code">{a.code || '-'}</span>
                     <span className="name">{a.name}</span>
-                    <button type="button" className="btn btn-sm btn-secondary ml" onClick={() => startEditAccount(a)}>수정</button>
+                    <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEditAccount(a)}>수정</button>
+                    <button type="button" className="btn btn-sm btn-secondary ml" onClick={() => deleteAccount(a.id)} disabled={deletingAccount === a.id}>
+                      {deletingAccount === a.id ? '삭제 중...' : '삭제'}
+                    </button>
                   </>
                 )}
               </li>
@@ -201,7 +241,10 @@ export default function Masters() {
                   <>
                     <span className="code">{p.code || '-'}</span>
                     <span className="name">{p.name}</span>
-                    <button type="button" className="btn btn-sm btn-secondary ml" onClick={() => startEditProject(p)}>수정</button>
+                    <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEditProject(p)}>수정</button>
+                    <button type="button" className="btn btn-sm btn-secondary ml" onClick={() => deleteProject(p.id)} disabled={deletingProject === p.id}>
+                      {deletingProject === p.id ? '삭제 중...' : '삭제'}
+                    </button>
                   </>
                 )}
               </li>

@@ -27,12 +27,12 @@ export default function ExpenseList() {
   const [users, setUsers] = useState([]);
   const [filter, setFilter] = useState(() => ({
     ...getDefaultDateRange(),
+    status: '',
     project: '',
     account_item_name: '',
     user_name: '',
     description: '',
   }));
-  const [includeDraft, setIncludeDraft] = useState(true);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
 
@@ -40,7 +40,7 @@ export default function ExpenseList() {
     const p = pageOverride ?? page;
     setLoading(true);
     await nextTick();
-    const params = { ...filter, include_draft: includeDraft ? '1' : undefined, limit: PAGE_SIZE, offset: (p - 1) * PAGE_SIZE };
+    const params = { ...filter, limit: PAGE_SIZE, offset: (p - 1) * PAGE_SIZE };
     Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
     try {
       const data = await api.getExpenses(params);
@@ -59,7 +59,7 @@ export default function ExpenseList() {
     }
   };
 
-  useEffect(() => { load(); }, [page, includeDraft, filter.from, filter.to, filter.project, filter.account_item_name, filter.user_name, filter.description]);
+  useEffect(() => { load(); }, [page, filter.from, filter.to, filter.status, filter.project, filter.account_item_name, filter.user_name, filter.description]);
 
   const handleDelete = async (docId) => {
     if (!confirm('이 문서를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.')) return;
@@ -84,28 +84,43 @@ export default function ExpenseList() {
       <header className="page-header">
         <h1>사용내역 조회</h1>
       </header>
-      <p className="subtitle">승인/결재대기 문서의 사용내역을 조회할 수 있습니다.</p>
+      <p className="subtitle">입력된 모든 사용내역을 조회합니다. 작성중 문서는 삭제 가능합니다.</p>
 
-      <div className="filters" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-        <input type="date" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} placeholder="시작일" />
-        <input type="date" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} placeholder="종료일" />
-        <select value={filter.project} onChange={e => setFilter(f => ({ ...f, project: e.target.value }))}>
-          <option value="">전체 현장</option>
-          {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-        </select>
-        <select value={filter.account_item_name} onChange={e => setFilter(f => ({ ...f, account_item_name: e.target.value }))}>
-          <option value="">전체 항목</option>
-          {accountItems.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-        </select>
-        <input type="text" value={filter.user_name} onChange={e => setFilter(f => ({ ...f, user_name: e.target.value }))} placeholder="사용자" list="exp-user-list" />
-        <datalist id="exp-user-list">{users.map(u => <option key={u} value={u} />)}</datalist>
-        <input type="text" value={filter.description} onChange={e => setFilter(f => ({ ...f, description: e.target.value }))} placeholder="적요" />
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-          <input type="checkbox" checked={includeDraft} onChange={e => setIncludeDraft(e.target.checked)} />
-          작성중 포함
-        </label>
-        <button type="button" className="btn btn-secondary" onClick={() => { setPage(1); load(1); }}>조회</button>
-      </div>
+      <section className="card filter-section" style={{ marginBottom: '1rem' }}>
+        <h2 style={{ marginBottom: '0.75rem', fontSize: '0.95rem' }}>조회 조건</h2>
+        <div className="filter-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <label className="filter-label">기간</label>
+          <input type="date" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
+          <span>~</span>
+          <input type="date" value={filter.to} onChange={e => setFilter(f => ({ ...f, to: e.target.value }))} />
+          <label className="filter-label">결재상태</label>
+          <select value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}>
+            <option value="">전체</option>
+            <option value="draft">작성중</option>
+            <option value="pending">결재대기</option>
+            <option value="approved">승인</option>
+            <option value="rejected">반려</option>
+          </select>
+          <label className="filter-label">현장</label>
+          <select value={filter.project} onChange={e => setFilter(f => ({ ...f, project: e.target.value }))}>
+            <option value="">전체</option>
+            {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+          </select>
+          <label className="filter-label">항목</label>
+          <select value={filter.account_item_name} onChange={e => setFilter(f => ({ ...f, account_item_name: e.target.value }))}>
+            <option value="">전체</option>
+            {accountItems.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+          </select>
+        </div>
+        <div className="filter-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+          <label className="filter-label">사용자</label>
+          <input type="text" value={filter.user_name} onChange={e => setFilter(f => ({ ...f, user_name: e.target.value }))} placeholder="사용자" list="exp-user-list" style={{ minWidth: 120 }} />
+          <datalist id="exp-user-list">{users.map(u => <option key={u} value={u} />)}</datalist>
+          <label className="filter-label">적요</label>
+          <input type="text" value={filter.description} onChange={e => setFilter(f => ({ ...f, description: e.target.value }))} placeholder="적요 검색" style={{ minWidth: 160 }} />
+          <button type="button" className="btn btn-primary" onClick={() => { setPage(1); load(1); }}>조회</button>
+        </div>
+      </section>
 
       <div className="card table-card">
         <table className="data-table">
@@ -139,8 +154,12 @@ export default function ExpenseList() {
                     <span style={{ color: '#6b7280' }}>작성중</span>
                   ) : row.status === 'pending' ? (
                     <span style={{ color: '#d97706' }}>결재대기</span>
-                  ) : (
+                  ) : row.status === 'approved' ? (
                     <span style={{ color: '#059669' }}>승인</span>
+                  ) : row.status === 'rejected' ? (
+                    <span style={{ color: '#dc2626' }}>반려</span>
+                  ) : (
+                    <span>{row.status || '-'}</span>
                   )}
                 </td>
                 <td>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import ProgressBar from '../components/ProgressBar';
 import './DocumentDetail.css';
 
@@ -26,23 +26,38 @@ export default function DocumentDetail() {
   const [approverName, setApproverName] = useState('결재자');
 
   useEffect(() => {
-    setLoading(true);
-    api.getDocument(id).then(d => { setDoc(d); setLoading(false); }).catch(() => { setDoc(null); setLoading(false); });
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      await nextTick();
+      try {
+        const d = await api.getDocument(id);
+        if (!cancelled) { setDoc(d); }
+      } catch {
+        if (!cancelled) setDoc(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [id]);
 
   const handleApprove = async () => {
     if (!['approved', 'rejected'].includes(action)) return;
     setApproving(true);
     setLoading(true);
+    await nextTick();
     try {
       await api.approveDocument(id, { action, approver_name: approverName, comment });
-      api.getDocument(id).then(setDoc);
+      const d = await api.getDocument(id);
+      setDoc(d);
       setAction('');
       setComment('');
     } catch (err) {
       alert(err.message || '처리 실패');
     } finally {
       setApproving(false);
+      setLoading(false);
     }
   };
 
@@ -60,6 +75,7 @@ export default function DocumentDetail() {
   const handleWithdraw = async () => {
     if (!confirm('기안을 취소하시겠습니까? 작성중으로 돌아가 수정할 수 있습니다.')) return;
     setLoading(true);
+    await nextTick();
     try {
       await api.withdrawDocument(id);
       const d = await api.getDocument(id);

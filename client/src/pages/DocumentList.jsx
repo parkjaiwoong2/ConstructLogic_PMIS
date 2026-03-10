@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import Pagination, { PAGE_SIZE } from '../components/Pagination';
 import ProgressBar from '../components/ProgressBar';
 import './DocumentList.css';
@@ -38,8 +38,11 @@ export default function DocumentList() {
     offset: (page - 1) * PAGE_SIZE,
   };
 
-  const loadDocs = () => {
-    api.getDocuments(effectiveFilter).then(data => {
+  const loadDocs = async () => {
+    setLoading(true);
+    await nextTick();
+    try {
+      const data = await api.getDocuments(effectiveFilter);
       if (Array.isArray(data)) {
         setDocs(data);
         setTotal(data.length);
@@ -47,7 +50,12 @@ export default function DocumentList() {
         setDocs(data.items || []);
         setTotal(data.total || 0);
       }
-    });
+    } catch {
+      setDocs([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.user_name, page]);
 
@@ -78,6 +86,7 @@ export default function DocumentList() {
     if (!confirm('기안을 취소하시겠습니까? 작성중으로 돌아가 수정할 수 있습니다.')) return;
     setWithdrawing(docId);
     setLoading(true);
+    await nextTick();
     try {
       await api.withdrawDocument(docId);
       alert('기안이 취소되었습니다.');

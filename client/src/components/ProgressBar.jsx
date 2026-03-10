@@ -7,13 +7,13 @@ const TICK_MS = 80;
 
 export default function ProgressBar({ loading }) {
   const [progress, setProgress] = useState(0);
-  const [visible, setVisible] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const startRef = useRef(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
     if (loading) {
-      setVisible(true);
+      setCompleting(false);
       setProgress(0);
       startRef.current = Date.now();
 
@@ -31,20 +31,20 @@ export default function ProgressBar({ loading }) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      setCompleting(true);
       setProgress(100);
-      const hideTimer = setTimeout(() => {
-        setVisible(false);
-        setProgress(0);
-      }, 400);
+      const hideTimer = setTimeout(() => setCompleting(false), 400);
       return () => clearTimeout(hideTimer);
     }
   }, [loading]);
 
-  if (!visible) return null;
+  if (!loading && !completing) return null;
+
+  const displayWidth = Math.max(2, progress);
 
   return (
     <div className="progress-bar" role="progressbar" aria-busy={loading} aria-valuenow={progress} aria-label="처리 중">
-      <div className="progress-bar-inner" style={{ width: `${progress}%` }} />
+      <div className="progress-bar-inner" style={{ width: `${displayWidth}%` }} />
     </div>
   );
 }

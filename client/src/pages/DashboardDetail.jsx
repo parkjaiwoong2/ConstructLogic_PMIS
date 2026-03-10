@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import ProgressBar from '../components/ProgressBar';
 import './DashboardDetail.css';
 
@@ -88,12 +88,18 @@ export default function DashboardDetail() {
     return p;
   }, [filters.from, filters.to, filters.account_item_id, filters.account_item_name, filters.project, filters.user_name, filters.description]);
 
-  const fetchItems = useCallback(() => {
+  const fetchItems = useCallback(async () => {
     const params = buildParams();
     setLoading(true);
-    api.getExpenses(params).then(data => {
+    await nextTick();
+    try {
+      const data = await api.getExpenses(params);
       setItems(data.filter(i => i.status === 'approved' || i.status === 'pending'));
-    }).catch(console.error).finally(() => setLoading(false));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   }, [buildParams]);
 
   useEffect(() => {

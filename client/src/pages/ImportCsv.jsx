@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import ProgressBar from '../components/ProgressBar';
 import './ImportCsv.css';
 
@@ -78,6 +78,7 @@ export default function ImportCsv() {
       return;
     }
     setImporting(true);
+    await nextTick();
     try {
       const r = await api.importCsv({ rows, user_name: userName });
       alert(`${r.count}건 임포트 완료. 문서번호: ${r.doc_no}`);

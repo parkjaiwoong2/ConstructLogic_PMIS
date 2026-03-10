@@ -210,7 +210,7 @@ app.post('/api/documents/:id/approve', async (req, res) => {
 });
 
 app.get('/api/expenses', async (req, res) => {
-  const { from, to, project, account_item_id, account_item_name, user_name, description, include_draft, limit, offset } = req.query;
+  const { from, to, project, account_item_id, account_item_name, user_name, description, status, limit, offset } = req.query;
   try {
     const cond = [];
     const params = [];
@@ -221,8 +221,14 @@ app.get('/api/expenses', async (req, res) => {
     else if (account_item_name) { params.push(account_item_name); cond.push(`ei.account_item_name = $${params.length}`); }
     if (user_name) { params.push(`%${user_name}%`); cond.push(`ed.user_name LIKE $${params.length}`); }
     if (description) { params.push(`%${description}%`); cond.push(`ei.description LIKE $${params.length}`); }
-    const statusFilter = include_draft === '1' || include_draft === 'true' ? "ed.status IN ('approved','pending','draft')" : "ed.status IN ('approved','pending')";
-    const whereClause = statusFilter + (cond.length ? ' AND ' + cond.join(' AND ') : '');
+    const validStatuses = ['draft', 'pending', 'approved', 'rejected'];
+    if (status && validStatuses.includes(status)) {
+      params.push(status);
+      cond.push(`ed.status = $${params.length}`);
+    } else {
+      cond.push("ed.status IN ('approved','pending','draft','rejected')");
+    }
+    const whereClause = cond.join(' AND ');
     const baseSql = `SELECT ei.id, ei.document_id, ei.use_date, ei.project_name, ei.account_item_id, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ed.status, ed.user_name
       FROM expense_items ei
       LEFT JOIN expense_documents ed ON ed.id = ei.document_id
@@ -376,6 +382,32 @@ app.put('/api/projects/:id', async (req, res) => {
     await db.run('UPDATE expense_documents SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
     res.json({ id });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/account-items/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const r = await db.run('DELETE FROM account_items WHERE id = $1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: '항목을 찾을 수 없습니다.' });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === '23503') return res.status(400).json({ error: '사용 중인 항목은 삭제할 수 없습니다.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/projects/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const r = await db.run('DELETE FROM projects WHERE id = $1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: '현장을 찾을 수 없습니다.' });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === '23503') return res.status(400).json({ error: '사용 중인 현장은 삭제할 수 없습니다.' });
     res.status(500).json({ error: e.message });
   }
 });

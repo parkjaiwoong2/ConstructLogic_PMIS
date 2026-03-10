@@ -37,9 +37,11 @@ export const api = {
     const q = new URLSearchParams(params).toString();
     return fetchJson(`${API}/dashboard/summary${q ? '?' + q : ''}`);
   },
-  createProject: (body) => fetchJson(`${API}/projects`, { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id, body) => fetchJson(`${API}/projects/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteProject: (id) => fetchJson(`${API}/projects/${id}`, { method: 'DELETE' }),
   createAccountItem: (body) => fetchJson(`${API}/account-items`, { method: 'POST', body: JSON.stringify(body) }),
   updateAccountItem: (id, body) => fetchJson(`${API}/account-items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteAccountItem: (id) => fetchJson(`${API}/account-items/${id}`, { method: 'DELETE' }),
+  createProject: (body) => fetchJson(`${API}/projects`, { method: 'POST', body: JSON.stringify(body) }),
   importCsv: (body) => fetchJson(`${API}/import/csv`, { method: 'POST', body: JSON.stringify(body) }),
 };

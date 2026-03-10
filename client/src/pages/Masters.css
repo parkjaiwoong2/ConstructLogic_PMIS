@@ -66,3 +66,24 @@
   padding: 0.35rem 0.7rem;
   font-size: 0.85rem;
 }
+
+.ml {
+  margin-left: auto;
+}
+
+.edit-inline {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.edit-inline input {
+  flex: 1;
+  min-width: 80px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}

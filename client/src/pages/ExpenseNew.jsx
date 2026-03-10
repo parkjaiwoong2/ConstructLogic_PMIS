@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import ProgressBar from '../components/ProgressBar';
 import './ExpenseNew.css';
 
@@ -38,23 +38,39 @@ export default function ExpenseNew() {
   const [popup, setPopup] = useState(null); // { rowIdx, suggestedName, userSelectedName }
 
   useEffect(() => {
-    setLoadingMasters(true);
-    Promise.all([api.getAccountItems(), api.getProjects()]).then(([items, projs]) => {
-      setAccountItems(items);
-      setProjects(projs);
-    }).catch(console.error).finally(() => setLoadingMasters(false));
+    let cancelled = false;
+    (async () => {
+      setLoadingMasters(true);
+      await nextTick();
+      try {
+        const [items, projs] = await Promise.all([api.getAccountItems(), api.getProjects()]);
+        if (!cancelled) {
+          setAccountItems(items);
+          setProjects(projs);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setLoadingMasters(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (isEdit && id) {
-      setLoadingDoc(true);
-      api.getDocument(id).then(doc => {
-        if (doc.status !== 'draft') {
-          alert('작성중 상태에서만 수정할 수 있습니다. 기안 취소 후 수정해 주세요.');
-          navigate(`/documents/${id}`, { replace: true });
-          return;
-        }
-        setForm({
+      let cancelled = false;
+      (async () => {
+        setLoadingDoc(true);
+        await nextTick();
+        try {
+          const doc = await api.getDocument(id);
+          if (doc.status !== 'draft') {
+            alert('작성중 상태에서만 수정할 수 있습니다. 기안 취소 후 수정해 주세요.');
+            navigate(`/documents/${id}`, { replace: true });
+            return;
+          }
+          if (!cancelled) setForm({
           user_name: doc.user_name,
           project_id: doc.project_id,
           project_name: doc.project_name,
@@ -73,8 +89,14 @@ export default function ExpenseNew() {
                 mismatchWarning: null,
               }))
             : [{ use_date: todayStr(), account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '', mismatchWarning: null }],
-        });
-      }).catch(console.error).finally(() => setLoading(false));
+          });
+        } catch (e) {
+          console.error(e);
+        } finally {
+          if (!cancelled) setLoadingDoc(false);
+        }
+      })();
+      return () => { cancelled = true; };
     }
   }, [isEdit, id]);
 
@@ -172,6 +194,7 @@ export default function ExpenseNew() {
       return;
     }
     setSaving(true);
+    await nextTick();
     try {
       let docId = id;
       if (isEdit) {

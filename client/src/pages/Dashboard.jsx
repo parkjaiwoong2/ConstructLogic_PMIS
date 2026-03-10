@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { api } from '../api';
+import { api, nextTick } from '../api';
 import ProgressBar from '../components/ProgressBar';
 import './Dashboard.css';
 
@@ -23,13 +23,20 @@ export default function Dashboard() {
   });
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
-  const loadSummary = () => {
+  const loadSummary = async () => {
     setLoading(true);
     setError(null);
-    api.getDashboardSummary({ from, to })
-      .then((data) => { setSummary(data); setError(null); })
-      .catch((err) => { setError(err?.message || '데이터를 불러오지 못했습니다.'); setSummary(null); })
-      .finally(() => setLoading(false));
+    await nextTick();
+    try {
+      const data = await api.getDashboardSummary({ from, to });
+      setSummary(data);
+      setError(null);
+    } catch (err) {
+      setError(err?.message || '데이터를 불러오지 못했습니다.');
+      setSummary(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadSummary(); }, [from, to]);

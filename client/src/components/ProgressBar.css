@@ -3,10 +3,10 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 4px;
-  z-index: 9999;
+  height: 6px;
+  z-index: 99999;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .progress-bar-inner {
