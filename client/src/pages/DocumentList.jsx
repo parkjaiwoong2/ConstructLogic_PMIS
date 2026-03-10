@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import Pagination, { PAGE_SIZE } from '../components/Pagination';
 import './DocumentList.css';
 
 const CURRENT_USER_KEY = 'currentUserName';
@@ -18,6 +19,8 @@ const statusMap = {
 
 export default function DocumentList() {
   const [docs, setDocs] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
   const [tab, setTab] = useState('all'); // 'all' | 'mine'
@@ -29,10 +32,22 @@ export default function DocumentList() {
   const effectiveFilter = {
     ...filter,
     user_name: tab === 'mine' && currentUser ? currentUser : '',
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   };
 
-  const loadDocs = () => api.getDocuments(effectiveFilter).then(setDocs);
-  useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.user_name]);
+  const loadDocs = () => {
+    api.getDocuments(effectiveFilter).then(data => {
+      if (Array.isArray(data)) {
+        setDocs(data);
+        setTotal(data.length);
+      } else {
+        setDocs(data.items || []);
+        setTotal(data.total || 0);
+      }
+    });
+  };
+  useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.user_name, page]);
 
   useEffect(() => {
     api.getProjects().then(setProjects);
@@ -95,14 +110,14 @@ export default function DocumentList() {
           <button
             type="button"
             className={`tab ${tab === 'all' ? 'active' : ''}`}
-            onClick={() => setTab('all')}
+            onClick={() => { setTab('all'); setPage(1); }}
           >
             전체
           </button>
           <button
             type="button"
             className={`tab ${tab === 'mine' ? 'active' : ''}`}
-            onClick={() => setTab('mine')}
+            onClick={() => { setTab('mine'); setPage(1); }}
           >
             내가 등록한 문서
           </button>
@@ -110,14 +125,14 @@ export default function DocumentList() {
       </div>
 
       <div className="filters">
-        <select value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}>
+        <select value={filter.status} onChange={e => { setFilter(f => ({ ...f, status: e.target.value })); setPage(1); }}>
           <option value="">전체 상태</option>
           <option value="draft">작성중</option>
           <option value="pending">결재대기</option>
           <option value="approved">승인</option>
           <option value="rejected">반려</option>
         </select>
-        <select value={filter.project} onChange={e => setFilter(f => ({ ...f, project: e.target.value }))}>
+        <select value={filter.project} onChange={e => { setFilter(f => ({ ...f, project: e.target.value })); setPage(1); }}>
           <option value="">전체 현장</option>
           {projects.map(p => (
             <option key={p.id} value={p.name}>{p.name}</option>
@@ -187,6 +202,7 @@ export default function DocumentList() {
               : '결재 문서가 없습니다.'}
           </div>
         )}
+        <Pagination total={total} page={page} onChange={setPage} />
       </div>
     </div>
   );

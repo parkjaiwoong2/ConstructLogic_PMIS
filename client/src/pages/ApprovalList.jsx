@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import Pagination, { PAGE_SIZE } from '../components/Pagination';
 import './DocumentList.css';
 
 function formatCurrency(n) {
@@ -9,10 +10,20 @@ function formatCurrency(n) {
 
 export default function ApprovalList() {
   const [docs, setDocs] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    api.getDocuments({ status: 'pending' }).then(setDocs);
-  }, []);
+    api.getDocuments({ status: 'pending', limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }).then(data => {
+      if (Array.isArray(data)) {
+        setDocs(data);
+        setTotal(data.length);
+      } else {
+        setDocs(data.items || []);
+        setTotal(data.total || 0);
+      }
+    });
+  }, [page]);
 
   return (
     <div className="document-list">
@@ -49,6 +60,7 @@ export default function ApprovalList() {
           </tbody>
         </table>
         {docs.length === 0 && <div className="empty">결재 대기 문서가 없습니다.</div>}
+        <Pagination total={total} page={page} onChange={setPage} />
       </div>
     </div>
   );

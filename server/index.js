@@ -67,18 +67,32 @@ app.get('/api/suggest-account', async (req, res) => {
 });
 
 app.get('/api/documents', async (req, res) => {
-  const { status, project, user_name } = req.query;
+  const { status, project, user_name, limit, offset } = req.query;
   try {
-    let sql = `SELECT id, doc_no, user_name, project_name, period_start, period_end,
-      status, total_card_amount, total_cash_amount, created_at
-      FROM expense_documents WHERE 1=1`;
+    const where = [];
     const params = [];
-    if (status) { params.push(status); sql += ` AND status = $${params.length}`; }
-    if (project) { params.push(project); sql += ` AND project_name = $${params.length}`; }
-    if (user_name) { params.push(user_name); sql += ` AND user_name = $${params.length}`; }
-    sql += ' ORDER BY created_at DESC';
-    const rows = await db.query(sql, params);
-    res.json(rows);
+    if (status) { params.push(status); where.push(`status = $${params.length}`); }
+    if (project) { params.push(project); where.push(`project_name = $${params.length}`); }
+    if (user_name) { params.push(user_name); where.push(`user_name = $${params.length}`); }
+    const whereClause = where.length ? ' WHERE ' + where.join(' AND ') : '';
+    const baseSql = `SELECT id, doc_no, user_name, project_name, period_start, period_end,
+      status, total_card_amount, total_cash_amount, created_at
+      FROM expense_documents${whereClause}`;
+    let rowParams = [...params];
+    let pageSql = baseSql + ' ORDER BY created_at DESC';
+    if (limit != null) { rowParams.push(parseInt(limit, 10)); pageSql += ` LIMIT $${rowParams.length}`; }
+    if (offset != null) { rowParams.push(parseInt(offset, 10)); pageSql += ` OFFSET $${rowParams.length}`; }
+    const [countRes, rowsRes] = await Promise.all([
+      db.query(`SELECT COUNT(*)::int as total FROM expense_documents${whereClause}`, params),
+      db.query(pageSql, rowParams),
+    ]);
+    const total = countRes[0]?.total ?? 0;
+    const rows = rowsRes;
+    if (limit != null || offset != null) {
+      res.json({ items: rows, total });
+    } else {
+      res.json(rows);
+    }
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -197,23 +211,38 @@ app.post('/api/documents/:id/approve', async (req, res) => {
 });
 
 app.get('/api/expenses', async (req, res) => {
-  const { from, to, project, account_item_id, account_item_name, user_name, description } = req.query;
+  const { from, to, project, account_item_id, account_item_name, user_name, description, limit, offset } = req.query;
   try {
-    let sql = `SELECT ei.id, ei.document_id, ei.use_date, ei.project_name, ei.account_item_id, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ed.status, ed.user_name
+    const cond = [];
+    const params = [];
+    if (from) { params.push(from); cond.push(`ei.use_date >= $${params.length}`); }
+    if (to) { params.push(to); cond.push(`ei.use_date <= $${params.length}`); }
+    if (project) { params.push(project); cond.push(`ei.project_name = $${params.length}`); }
+    if (account_item_id) { params.push(account_item_id); cond.push(`ei.account_item_id = $${params.length}`); }
+    else if (account_item_name) { params.push(account_item_name); cond.push(`ei.account_item_name = $${params.length}`); }
+    if (user_name) { params.push(`%${user_name}%`); cond.push(`ed.user_name LIKE $${params.length}`); }
+    if (description) { params.push(`%${description}%`); cond.push(`ei.description LIKE $${params.length}`); }
+    const whereClause = "ed.status IN ('approved','pending')" + (cond.length ? ' AND ' + cond.join(' AND ') : '');
+    const baseSql = `SELECT ei.id, ei.document_id, ei.use_date, ei.project_name, ei.account_item_id, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ed.status, ed.user_name
       FROM expense_items ei
       LEFT JOIN expense_documents ed ON ed.id = ei.document_id
-      WHERE ed.status IN ('approved','pending')`;
-    const params = [];
-    if (from) { params.push(from); sql += ` AND ei.use_date >= $${params.length}`; }
-    if (to) { params.push(to); sql += ` AND ei.use_date <= $${params.length}`; }
-    if (project) { params.push(project); sql += ` AND ei.project_name = $${params.length}`; }
-    if (account_item_id) { params.push(account_item_id); sql += ` AND ei.account_item_id = $${params.length}`; }
-    else if (account_item_name) { params.push(account_item_name); sql += ` AND ei.account_item_name = $${params.length}`; }
-    if (user_name) { params.push(`%${user_name}%`); sql += ` AND ed.user_name LIKE $${params.length}`; }
-    if (description) { params.push(`%${description}%`); sql += ` AND ei.description LIKE $${params.length}`; }
-    sql += ' ORDER BY ei.use_date DESC, ei.id';
-    const rows = await db.query(sql, params);
-    res.json(rows);
+      WHERE ${whereClause}`;
+    let rowParams = [...params];
+    let pageSql = baseSql + ' ORDER BY ei.use_date DESC, ei.id';
+    if (limit != null) { rowParams.push(parseInt(limit, 10)); pageSql += ` LIMIT $${rowParams.length}`; }
+    if (offset != null) { rowParams.push(parseInt(offset, 10)); pageSql += ` OFFSET $${rowParams.length}`; }
+    const countSql = `SELECT COUNT(*)::int as total FROM expense_items ei LEFT JOIN expense_documents ed ON ed.id = ei.document_id WHERE ${whereClause}`;
+    const [countRes, rowsRes] = await Promise.all([
+      db.query(countSql, params),
+      db.query(pageSql, rowParams),
+    ]);
+    const total = countRes[0]?.total ?? 0;
+    const rows = rowsRes;
+    if (limit != null || offset != null) {
+      res.json({ items: rows, total });
+    } else {
+      res.json(rows);
+    }
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

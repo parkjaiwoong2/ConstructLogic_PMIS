@@ -10,6 +10,7 @@ export default function Layout() {
         <nav className="app-nav">
           <NavLink to="/" end>대시보드</NavLink>
           <NavLink to="/expense/new">사용내역 입력</NavLink>
+          <NavLink to="/expenses">사용내역 조회</NavLink>
           <NavLink to="/import">CSV 임포트</NavLink>
           <NavLink to="/documents">결재 문서</NavLink>
           <NavLink to="/approval">결재함</NavLink>
