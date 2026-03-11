@@ -17,6 +17,7 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminRolePermissions from './pages/admin/AdminRolePermissions';
 import AdminApprovalSequence from './pages/admin/AdminApprovalSequence';
 import AdminEditHistory from './pages/admin/AdminEditHistory';
+import CardSettlement from './pages/CardSettlement';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="documents/:id" element={<ProtectedRoute path="/documents"><DocumentDetail /></ProtectedRoute>} />
         <Route path="import" element={<ProtectedRoute path="/import"><ImportCsv /></ProtectedRoute>} />
         <Route path="approval" element={<ProtectedRoute path="/approval"><ApprovalList /></ProtectedRoute>} />
+        <Route path="card-settlement" element={<ProtectedRoute path="/card-settlement"><CardSettlement /></ProtectedRoute>} />
         <Route path="masters" element={<ProtectedRoute path="/masters"><Masters /></ProtectedRoute>} />
         <Route path="settings" element={<ProtectedRoute path="/settings"><Settings /></ProtectedRoute>} />
         <Route path="admin/company" element={<ProtectedRoute path="/admin/company"><AdminCompany /></ProtectedRoute>} />

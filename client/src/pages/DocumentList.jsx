@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, nextTick } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,23 +19,16 @@ const statusMap = {
   rejected: { label: '반려', color: '#dc2626' },
 };
 
-const MANUAL_INPUT = '__manual__';
-
 export default function DocumentList() {
   const { user } = useAuth();
-  const isAdmin = user?.is_admin || user?.role === 'admin';
   const [docs, setDocs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
-  const [cards, setCards] = useState([]);
-  const [cardSelect, setCardSelect] = useState(''); // '' | card_no | MANUAL_INPUT
-  const cardDefaultSet = useRef(false);
-  const [cardManualInput, setCardManualInput] = useState('');
   const [tab, setTab] = useState('all'); // 'all' | 'mine'
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
-  const [filter, setFilter] = useState({ status: '', project: '', period_from: '', period_to: '', card_no: '' });
+  const [filter, setFilter] = useState({ status: '', project: '', period_from: '', period_to: '' });
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(null);
   const [withdrawing, setWithdrawing] = useState(null);
@@ -48,9 +41,6 @@ export default function DocumentList() {
   };
   if (!effectiveFilter.period_from) delete effectiveFilter.period_from;
   if (!effectiveFilter.period_to) delete effectiveFilter.period_to;
-  const effectiveCardNo = cardSelect === MANUAL_INPUT ? cardManualInput.trim() : (cardSelect || '');
-  if (effectiveCardNo) effectiveFilter.card_no = effectiveCardNo;
-  else delete effectiveFilter.card_no;
 
   const loadDocs = async () => {
     setLoading(true);
@@ -71,31 +61,12 @@ export default function DocumentList() {
       setLoading(false);
     }
   };
-  useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.period_from, effectiveFilter.period_to, effectiveFilter.card_no, effectiveFilter.user_name, page]);
+  useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.period_from, effectiveFilter.period_to, effectiveFilter.user_name, page]);
 
   useEffect(() => {
     api.getProjects().then(setProjects);
     api.getUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
-
-  useEffect(() => {
-    const loadCards = async () => {
-      try {
-        const list = await api.getUserCards(isAdmin ? null : user?.name, isAdmin);
-        setCards(Array.isArray(list) ? list : []);
-        if (!isAdmin && list?.length && !cardDefaultSet.current) {
-          const def = list.find(c => c.is_default) || list[0];
-          if (def) {
-            setCardSelect(def.card_no);
-            cardDefaultSet.current = true;
-          }
-        }
-      } catch {
-        setCards([]);
-      }
-    };
-    loadCards();
-  }, [isAdmin, user?.name]);
 
   useEffect(() => {
     if (currentUser) localStorage.setItem(CURRENT_USER_KEY, currentUser);
@@ -112,33 +83,6 @@ export default function DocumentList() {
       alert(err.message || '결재 요청 실패');
     } finally {
       setSubmitting(null);
-    }
-  };
-
-  const handleBatchExcel = async () => {
-    try {
-      const params = {};
-      if (filter.period_from) params.period_from = filter.period_from;
-      if (filter.period_to) params.period_to = filter.period_to;
-      if (filter.status) params.status = filter.status;
-      if (filter.project) params.project = filter.project;
-      if (effectiveCardNo) params.card_no = effectiveCardNo;
-      const res = await api.downloadBatchApprovalExcel(params);
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData?.error || res.statusText || '다운로드 실패');
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `카드사용내역서_${filter.period_from || ''}_${filter.period_to || ''}.xlsx`.replace(/__/g, '_').replace(/^_|_$/g, '') || '카드사용내역서.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    } catch (err) {
-      alert(err?.message || '출력 실패');
     }
   };
 
@@ -227,36 +171,6 @@ export default function DocumentList() {
             <option key={p.id} value={p.name}>{p.name}</option>
           ))}
         </select>
-        <div className="card-filter-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <select
-            value={cardSelect}
-            onChange={e => {
-              const v = e.target.value;
-              setCardSelect(v);
-              if (v !== MANUAL_INPUT) setCardManualInput('');
-              setPage(1);
-            }}
-            style={{ minWidth: 140 }}
-          >
-            <option value="">전체 카드</option>
-            {cards.map(c => (
-              <option key={c.id} value={c.card_no}>
-                {isAdmin ? `${c.card_no} (${c.user_name || ''})` : (c.label || c.card_no)}
-              </option>
-            ))}
-            <option value={MANUAL_INPUT}>직접입력</option>
-          </select>
-          {cardSelect === MANUAL_INPUT && (
-            <input
-              type="text"
-              value={cardManualInput}
-              onChange={e => { setCardManualInput(e.target.value); setPage(1); }}
-              placeholder="카드번호 입력"
-              style={{ minWidth: 140 }}
-            />
-          )}
-        </div>
-        <button type="button" className="btn btn-primary" onClick={handleBatchExcel}>일괄결제출력</button>
       </div>
 
       <div className="card table-card">

@@ -111,4 +111,11 @@ export const api = {
     const t = localStorage.getItem('auth_token');
     return fetch(`${API}/export/ceo-excel`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
   },
+  getCardSettlement: (params) => {
+    const q = params && Object.keys(params).length
+      ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString()
+      : '';
+    return fetchJson(`${API}/card-settlement${q}`);
+  },
+  processCardSettlement: (body) => fetchJson(`${API}/card-settlement/process`, { method: 'POST', body: JSON.stringify(body) }),
 };

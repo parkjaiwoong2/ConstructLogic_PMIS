@@ -195,3 +195,7 @@ ALTER TABLE companies ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS copyright_text TEXT;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT false;
 UPDATE companies SET is_default = true WHERE id = (SELECT id FROM companies ORDER BY id LIMIT 1) AND NOT EXISTS (SELECT 1 FROM companies WHERE is_default = true);
+
+-- 카드정산 settled_at (기존 테이블 마이그레이션)
+ALTER TABLE expense_documents ADD COLUMN IF NOT EXISTS settled_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_expense_documents_settled ON expense_documents(settled_at) WHERE settled_at IS NOT NULL;

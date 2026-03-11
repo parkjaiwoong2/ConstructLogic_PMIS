@@ -12,6 +12,7 @@ const MENUS = [
   { to: '/import', end: false, label: 'CSV 임포트' },
   { to: '/documents', end: false, label: '결재 문서' },
   { to: '/approval', end: false, label: '결재함' },
+  { to: '/card-settlement', end: false, label: '카드정산' },
   { to: '/masters', end: false, label: '마스터 관리' },
   { to: '/settings', end: false, label: '내 설정' },
   { to: '/admin/company', end: false, label: '회사 등록', admin: true },

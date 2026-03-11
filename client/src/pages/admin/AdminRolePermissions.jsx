@@ -10,6 +10,7 @@ const ALL_MENUS = [
   { path: '/import', label: 'CSV 임포트' },
   { path: '/documents', label: '결재 문서' },
   { path: '/approval', label: '결재함' },
+  { path: '/card-settlement', label: '카드정산' },
   { path: '/masters', label: '마스터 관리' },
   { path: '/settings', label: '내 설정' },
   { path: '/admin/company', label: '회사 등록' },

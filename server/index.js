@@ -89,7 +89,7 @@ app.get('/api/auth/me', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
     const hasFullAccess = user.is_admin || user.role === 'admin';
     const menus = hasFullAccess
-      ? ['/', '/expense/new', '/expenses', '/import', '/documents', '/approval', '/masters', '/settings', '/admin/company', '/admin/users', '/admin/role-permissions', '/admin/approval-sequence']
+      ? ['/', '/expense/new', '/expenses', '/import', '/documents', '/approval', '/card-settlement', '/masters', '/settings', '/admin/company', '/admin/users', '/admin/role-permissions', '/admin/approval-sequence']
       : (await db.query('SELECT menu_path FROM role_menus WHERE role = $1', [user.role])).map(r => r.menu_path);
     const company = companyRow ? { ...COMPANY_DEFAULTS, ...companyRow } : COMPANY_DEFAULTS;
     res.json({ user, menus: [...new Set(menus)], company });
@@ -151,6 +151,57 @@ app.get('/api/suggest-account', async (req, res) => {
     res.json(rules ? { id: rules.id, name: rules.name } : null);
   } catch (e) {
     res.json(null);
+  }
+});
+
+app.get('/api/card-settlement', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const { period_from, period_to, project, card_no, settled, limit, offset } = req.query;
+  try {
+    const where = ['status = \'approved\''];
+    const params = [];
+    if (project) { params.push(project); where.push(`project_name = $${params.length}`); }
+    if (card_no != null && String(card_no).trim() !== '') {
+      params.push(`%${String(card_no).trim()}%`);
+      where.push(`(card_no ILIKE $${params.length})`);
+    }
+    if (period_from) { params.push(period_from); where.push(`period_end >= $${params.length}`); }
+    if (period_to) { params.push(period_to); where.push(`period_start <= $${params.length}`); }
+    if (settled === 'y' || settled === '1' || settled === 'true') where.push('settled_at IS NOT NULL');
+    else if (settled === 'n' || settled === '0' || settled === 'false') where.push('settled_at IS NULL');
+    const whereClause = ' WHERE ' + where.join(' AND ');
+    const limitVal = limit != null ? Math.min(parseInt(limit, 10) || 50, 100) : 50;
+    const offsetVal = offset != null ? Math.max(0, parseInt(offset, 10)) : 0;
+    const [countRes, rowsRes] = await Promise.all([
+      db.query(`SELECT COUNT(*)::int as total FROM expense_documents${whereClause}`, params),
+      db.query(`SELECT id, doc_no, user_name, project_name, period_start, period_end, card_no, total_card_amount, total_cash_amount, settled_at
+        FROM expense_documents${whereClause}
+        ORDER BY period_start DESC, id DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limitVal, offsetVal]),
+    ]);
+    res.json({ items: rowsRes, total: countRes[0]?.total ?? 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/card-settlement/process', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const { document_ids } = req.body;
+  if (!Array.isArray(document_ids) || document_ids.length === 0) {
+    return res.status(400).json({ error: '정산할 문서를 선택하세요.' });
+  }
+  const ids = document_ids.map(id => parseInt(id, 10)).filter(n => !isNaN(n));
+  if (ids.length === 0) return res.status(400).json({ error: '유효한 문서 ID가 없습니다.' });
+  try {
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+    await db.run(
+      `UPDATE expense_documents SET settled_at = (now() AT TIME ZONE 'Asia/Seoul') WHERE id IN (${placeholders}) AND status = 'approved'`,
+      ids
+    );
+    res.json({ ok: true, count: ids.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -1243,7 +1294,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell('A1').font = { bold: true, size: 12 };
       ws.getCell('A1').border = fullBorder;
 
-      ws.mergeCells('E1:E5');
+      ws.mergeCells('E1:E2');
       ws.getCell('E1').value = '결재';
       ws.getCell('E1').alignment = { horizontal: 'center', vertical: 'middle' };
       ws.getCell('F1').value = '작성';
@@ -1252,6 +1303,13 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell('I1').value = '승인';
       [5, 6, 7, 8, 9].forEach(c => { ws.getCell(1, c).alignment = { horizontal: 'center', vertical: 'middle' }; });
       applyGridBorders(ws, 1, 5, 5, 9);
+      [5, 6, 7, 8, 9].forEach(c => {
+        const cell = ws.getCell(3, c);
+        cell.border = { top: thinBorder, bottom: thinBorder };
+      });
+      ws.mergeCells('E4:F4');
+      ws.mergeCells('E5:F5');
+      ws.getCell('E4').value = '-';
       [2, 3, 4, 5].forEach(r => { ws.getRow(r).height = 26; });
 
       ws.getCell('A4').value = '카드번호';
@@ -1262,10 +1320,9 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell('B5').value = userVal;
       ws.getCell('C5').value = '';
       ws.getCell('D5').value = '공적용도';
-      ws.getCell('F5').value = totalVal;
-      ws.getCell('G5').value = totalVal;
-      if (typeof totalVal === 'number') { ws.getCell('F5').numFmt = '#,##0'; ws.getCell('G5').numFmt = '#,##0'; }
-      ws.mergeCells('H4:I5');
+      ws.getCell('E5').value = totalVal;
+      if (typeof totalVal === 'number') ws.getCell('E5').numFmt = '#,##0';
+      ws.mergeCells('H4:I4');
       ws.getCell('H4').value = '비고';
       ws.getCell('H4').alignment = { horizontal: 'center', vertical: 'middle' };
       applyGridBorders(ws, 4, 1, 5, 9);
@@ -1326,7 +1383,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
 
       ws.mergeCells(submitterRow + 4, 1, submitterRow + 4, 9);
       ws.getCell(submitterRow + 4, 1).value = `제출자: ${submitterName || ''}(인)`;
-      ws.getCell(submitterRow + 4, 1).alignment = { horizontal: 'right' };
+      ws.getCell(submitterRow + 4, 1).alignment = { horizontal: 'center' };
       applyGridBorders(ws, submitterRow + 4, 1, submitterRow + 4, 9);
     };
 
