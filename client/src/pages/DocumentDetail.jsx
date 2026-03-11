@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api, nextTick } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import ProgressBar from '../components/ProgressBar';
 import './DocumentDetail.css';
 
@@ -18,12 +19,13 @@ const statusMap = {
 export default function DocumentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin || user?.role === 'admin';
   const [doc, setDoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
   const [action, setAction] = useState('');
   const [comment, setComment] = useState('');
-  const [approverName, setApproverName] = useState('결재자');
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +50,7 @@ export default function DocumentDetail() {
     setLoading(true);
     await nextTick();
     try {
-      await api.approveDocument(id, { action, approver_name: approverName, comment });
+      await api.approveDocument(id, { action, comment });
       const d = await api.getDocument(id);
       setDoc(d);
       setAction('');
@@ -62,6 +64,10 @@ export default function DocumentDetail() {
   };
 
   const handleSubmit = async () => {
+    if (!doc?.card_no?.trim()) {
+      alert('카드번호가 없습니다. 문서를 수정해 카드번호를 입력한 후 기안해 주세요.');
+      return;
+    }
     setLoading(true);
     try {
       await api.submitDocument(id);
@@ -96,6 +102,7 @@ export default function DocumentDetail() {
   const canEdit = doc.status === 'draft';
   const canSubmit = doc.status === 'draft';
   const canWithdraw = doc.status === 'pending';
+  const canAdminEdit = isAdmin && !canEdit;
 
   return (
     <div className="document-detail">
@@ -104,10 +111,26 @@ export default function DocumentDetail() {
         <h1>결재 문서 상세</h1>
         <div className="header-actions">
           {canEdit && <Link to={`/expense/${id}/edit`} className="btn btn-secondary">수정</Link>}
+          {canAdminEdit && <Link to={`/expense/${id}/edit`} className="btn btn-secondary">관리자 수정</Link>}
           {canSubmit && <button className="btn btn-primary" onClick={handleSubmit}>결재 요청</button>}
           {canWithdraw && <button className="btn btn-secondary" onClick={handleWithdraw}>기안 취소</button>}
         </div>
       </header>
+
+      <section className="card approval-progress-section">
+        <h2>결재진행</h2>
+        <div className="approval-progress">
+          <div className="progress-chain">
+            작성자({doc.user_name})
+            {(doc.approval_steps || []).map((s, i) => (
+              <span key={i}>
+                {' → '}
+                <span className={s.action === 'rejected' ? 'rejected' : ''}>{s.label}({s.name})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className="card doc-info">
         <h2>기본정보</h2>
@@ -115,6 +138,7 @@ export default function DocumentDetail() {
           <div><span className="label">문서번호</span> {doc.doc_no}</div>
           <div><span className="label">상태</span> {statusMap[doc.status]}</div>
           <div><span className="label">사용자</span> {doc.user_name}</div>
+          <div><span className="label">카드번호</span> {doc.card_no || '-'}</div>
           <div><span className="label">현장</span> {doc.project_name}</div>
           <div><span className="label">기간</span> {doc.period_start} ~ {doc.period_end}</div>
           <div><span className="label">카드 합계</span> {formatCurrency(doc.total_card_amount)}원</div>
@@ -152,10 +176,6 @@ export default function DocumentDetail() {
         <section className="card approve-section">
           <h2>결재</h2>
           <div className="approve-form">
-            <div className="form-row">
-              <label>결재자</label>
-              <input value={approverName} onChange={e => setApproverName(e.target.value)} />
-            </div>
             <div className="form-row">
               <label>처리</label>
               <select value={action} onChange={e => setAction(e.target.value)}>

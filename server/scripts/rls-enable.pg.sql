@@ -25,6 +25,10 @@ CREATE POLICY "Allow all" ON public.expense_items FOR ALL USING (true) WITH CHEC
 ALTER TABLE public.approval_history ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all" ON public.approval_history FOR ALL USING (true) WITH CHECK (true);
 
+-- admin_edit_history
+ALTER TABLE public.admin_edit_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all" ON public.admin_edit_history FOR ALL USING (true) WITH CHECK (true);
+
 -- account_mapping_rules
 ALTER TABLE public.account_mapping_rules ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all" ON public.account_mapping_rules FOR ALL USING (true) WITH CHECK (true);

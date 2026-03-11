@@ -5,26 +5,28 @@
   "description": "건설 프로젝트 관리 정보 시스템 - 카드/현금 사용내역 및 결재",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "node server/index.js",
-    "dev:client": "cd client && npm run dev",
-    "server": "node server/index.js",
-    "client": "cd client && npm run dev",
+    "dev": "node server/index.js",
     "build": "cd client && npm install && npm run build",
     "start": "node server/index.js",
     "seed": "node server/scripts/seed.pg.js",
+    "seed:auth": "node server/scripts/seed-auth.js",
     "db:migrate": "node server/scripts/migrate.js",
     "db:indexes": "node -e \"require('dotenv').config({path:'.env.local'}); require('./server/db').pool.query(require('fs').readFileSync('./server/scripts/db-indexes.pg.sql','utf8')).then(()=>{console.log('Indexes created'); process.exit(0)}).catch(e=>{console.error(e); process.exit(1)})\"",
     "db:init": "npm run db:migrate && npm run seed"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.3",
-    "serverless-http": "^4.0.0"
+    "serverless-http": "^4.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.0"
   }
 }

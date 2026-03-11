@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, nextTick } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import ProgressBar from '../components/ProgressBar';
 import './ExpenseNew.css';
 
@@ -15,6 +16,8 @@ function todayStr() {
 export default function ExpenseNew() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin || user?.role === 'admin';
   const isEdit = !!id;
 
   const [accountItems, setAccountItems] = useState([]);
@@ -36,6 +39,7 @@ export default function ExpenseNew() {
   const [loadingMasters, setLoadingMasters] = useState(true);
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isAdminEditMode, setIsAdminEditMode] = useState(false);
   const [popup, setPopup] = useState(null); // { rowIdx, suggestedName, userSelectedName }
 
   useEffect(() => {
@@ -96,11 +100,12 @@ export default function ExpenseNew() {
         await nextTick();
         try {
           const doc = await api.getDocument(id);
-          if (doc.status !== 'draft') {
-            alert('작성중 상태에서만 수정할 수 있습니다. 기안 취소 후 수정해 주세요.');
+          if (doc.status !== 'draft' && !isAdmin) {
+            alert('작성중 상태에서만 수정할 수 있습니다. 기안 취소 후 수정해 주세요. 관리자는 관리자 수정으로 수정할 수 있습니다.');
             navigate(`/documents/${id}`, { replace: true });
             return;
           }
+          if (!cancelled) setIsAdminEditMode(doc.status !== 'draft');
           const projs = await api.getProjects();
           const proj = projs?.find(p => p.id === doc.project_id || p.name === doc.project_name);
           if (!cancelled) setForm({
@@ -211,6 +216,10 @@ export default function ExpenseNew() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.card_no?.trim()) {
+      alert('카드번호를 입력해 주세요.');
+      return;
+    }
     const items = form.items
       .filter(i => i.use_date && i.account_item_id && (i.card_amount || i.cash_amount))
       .map(({ mismatchWarning, ...i }) => ({
@@ -233,13 +242,17 @@ export default function ExpenseNew() {
       if (isEdit) {
         await api.updateDocument(id, { ...form, items });
         alert('저장되었습니다.');
+        if (isAdminEditMode) {
+          navigate(`/documents/${docId}`);
+          return;
+        }
       } else {
         const r = await api.createDocument({ ...form, items });
         docId = r.id;
         alert('저장되었습니다.');
         navigate(`/documents/${docId}`);
       }
-      if (window.confirm('결재를 요청하시겠습니까? (결재함에 올라갑니다)')) {
+      if (!isAdminEditMode && window.confirm('결재를 요청하시겠습니까? (결재함에 올라갑니다)')) {
         await api.submitDocument(docId);
         alert('결재 요청되었습니다. 결재함에서 확인하실 수 있습니다.');
         navigate(`/documents/${docId}`);
@@ -286,7 +299,7 @@ export default function ExpenseNew() {
             <input type="date" value={form.period_end} onChange={e => setForm(f => ({ ...f, period_end: e.target.value }))} />
           </div>
           <div className="form-row">
-            <label>카드번호</label>
+            <label className={!form.card_no?.trim() ? 'required' : ''}>카드번호 <span className="req">*</span></label>
             {userCards.length > 0 ? (
               <>
                 <select

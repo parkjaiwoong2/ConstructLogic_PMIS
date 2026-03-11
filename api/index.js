@@ -2,14 +2,16 @@
 const app = require('../server/index.js');
 
 module.exports = (req, res) => {
-  const pathPart = req.url && req.url.includes('?') ? req.url.split('?')[1] : '';
+  const qIdx = req.url && req.url.indexOf('?');
+  const pathPart = qIdx >= 0 ? req.url.slice(qIdx + 1) : '';
   const params = new URLSearchParams(pathPart);
-  const apiPath = params.get('__path');
+  // __path (수동 설정) 또는 path (Vercel 자동 변환)
+  const apiPath = params.get('__path') || params.get('path');
   if (apiPath) {
     params.delete('__path');
+    params.delete('path');
     const qs = params.toString();
     req.url = '/api/' + apiPath + (qs ? '?' + qs : '');
-    // Express가 수정된 URL의 query를 사용하도록 req.query 갱신
     req.query = Object.fromEntries(new URLSearchParams(qs));
   }
   app(req, res);

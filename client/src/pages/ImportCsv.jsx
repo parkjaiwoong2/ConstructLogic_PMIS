@@ -10,6 +10,7 @@ export default function ImportCsv() {
   const navigate = useNavigate();
   const [text, setText] = useState('');
   const [userName, setUserName] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
+  const [cardNo, setCardNo] = useState('');
   const [defaultCardNo, setDefaultCardNo] = useState('');
   const [defaultProjectName, setDefaultProjectName] = useState('');
   const [users, setUsers] = useState([]);
@@ -27,6 +28,7 @@ export default function ImportCsv() {
     if (!userName?.trim()) {
       setDefaultCardNo('');
       setDefaultProjectName('');
+      setCardNo('');
       return;
     }
     (async () => {
@@ -37,7 +39,9 @@ export default function ImportCsv() {
           api.getProjects(),
         ]);
         const defaultCard = Array.isArray(cards) && (cards.find(c => c.is_default) || cards[0]);
-        setDefaultCardNo(defaultCard?.card_no || '');
+        const dCard = defaultCard?.card_no || '';
+        setDefaultCardNo(dCard);
+        setCardNo(dCard);
         const proj = projects?.find(p => p.id === settings?.default_project_id);
         setDefaultProjectName(proj?.name || '');
       } catch (e) { /* ignore */ }
@@ -117,7 +121,7 @@ export default function ImportCsv() {
       const r = await api.importCsv({
         rows,
         user_name: userName,
-        card_no: defaultCardNo || undefined,
+        card_no: effectiveCardNo,
         project_name: defaultProjectName || undefined,
       });
       alert(`${r.count}건 임포트 완료. 문서번호: ${r.doc_no}`);
@@ -149,9 +153,18 @@ export default function ImportCsv() {
             {users.map(u => <option key={u} value={u} />)}
           </datalist>
         </div>
-        {userName && (
+        <div className="form-row">
+          <label className={!(cardNo || defaultCardNo)?.trim() ? 'required' : ''}>카드번호 <span className="req">*</span></label>
+          <input
+            value={cardNo}
+            onChange={e => setCardNo(e.target.value)}
+            placeholder={defaultCardNo ? `기본: ${defaultCardNo}` : '카드번호 입력 (5585-****-****-****)'}
+            style={{ minWidth: 220 }}
+          />
+        </div>
+        {userName && defaultProjectName && (
           <div className="form-row hint">
-            기본 카드: {defaultCardNo || '(없음)'} · 기본 현장: {defaultProjectName || '(없음)'}
+            기본 현장: {defaultProjectName}
           </div>
         )}
         <label>CSV 내용</label>

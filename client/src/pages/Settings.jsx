@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { api, nextTick } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import ProgressBar from '../components/ProgressBar';
 import './Settings.css';
 
 const CURRENT_USER_KEY = 'currentUserName';
 
 export default function Settings() {
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin === true;
+  const selfName = user?.name || '';
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -18,12 +22,27 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.getUsers().then(setUsers).catch(() => []);
     api.getProjects().then(setProjects).catch(() => []);
-  }, []);
+    if (isAdmin) {
+      api.getAdminUsers()
+        .then(u => {
+          const rows = Array.isArray(u) ? u : (u?.rows ?? []);
+          const hasSelf = rows.some(x => x?.name === selfName);
+          const list = hasSelf ? rows : [{ id: 0, name: selfName }, ...rows];
+          setUsers(list);
+          setCurrentUser(prev => prev || selfName);
+        })
+        .catch(() => setUsers([]));
+    } else {
+      setUsers([]);
+      setCurrentUser(selfName);
+    }
+  }, [isAdmin, selfName]);
+
+  const effectiveUser = isAdmin ? currentUser : selfName;
 
   const load = async () => {
-    if (!currentUser?.trim()) {
+    if (!effectiveUser?.trim()) {
       setCards([]);
       setSettings({ default_project_id: null });
       return;
@@ -32,8 +51,8 @@ export default function Settings() {
     await nextTick();
     try {
       const [cardsRes, settingsRes] = await Promise.all([
-        api.getUserCards(currentUser),
-        api.getUserSettings(currentUser),
+        api.getUserCards(effectiveUser),
+        api.getUserSettings(effectiveUser),
       ]);
       setCards(Array.isArray(cardsRes) ? cardsRes : []);
       setSettings(settingsRes || { default_project_id: null });
@@ -47,11 +66,11 @@ export default function Settings() {
 
   useEffect(() => {
     load();
-  }, [currentUser]);
+  }, [effectiveUser]);
 
   useEffect(() => {
-    if (currentUser) localStorage.setItem(CURRENT_USER_KEY, currentUser);
-  }, [currentUser]);
+    if (effectiveUser) localStorage.setItem(CURRENT_USER_KEY, effectiveUser);
+  }, [effectiveUser]);
 
   const addCard = async (e) => {
     e.preventDefault();
@@ -99,10 +118,10 @@ export default function Settings() {
   };
 
   const saveDefaultProject = async (projectId) => {
-    if (!currentUser?.trim()) return;
+    if (!effectiveUser?.trim()) return;
     setSaving(true);
     try {
-      const res = await api.updateUserSettings({ user_name: currentUser, default_project_id: projectId || null });
+      const res = await api.updateUserSettings({ user_name: effectiveUser, default_project_id: projectId || null });
       setSettings(res);
     } catch (err) {
       alert(err.message || '설정 저장 실패');
@@ -125,16 +144,21 @@ export default function Settings() {
         <h2>사용자 선택</h2>
         <div className="form-row">
           <label>현재 사용자</label>
-          <select value={currentUser} onChange={e => setCurrentUser(e.target.value)}>
-            <option value="">선택</option>
-            {users.map(u => (
-              <option key={u} value={u}>{u}</option>
-            ))}
-          </select>
+          {isAdmin ? (
+            <select value={currentUser} onChange={e => setCurrentUser(e.target.value)}>
+              <option value="">선택</option>
+              {users.map(u => (
+                <option key={u.id} value={u.name}>{u.name}{u.email ? ` (${u.email})` : ''}</option>
+              ))}
+            </select>
+          ) : (
+            <input type="text" value={selfName} readOnly disabled style={{ background: '#f5f5f5', color: '#666' }} />
+          )}
         </div>
+        {isAdmin && <p className="desc">관리자는 모든 사용자의 카드·기본 현장을 설정할 수 있습니다.</p>}
       </section>
 
-      {currentUser && (
+      {effectiveUser && (
         <>
           <section className="card settings-section">
             <h2>등록 카드</h2>

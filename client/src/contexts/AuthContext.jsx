@@ -1,0 +1,73 @@
+import { createContext, useContext, useState, useEffect } from 'react';
+import { api } from '../api';
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [menus, setMenus] = useState([]);
+  const [company, setCompany] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadAuth = async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setUser(null);
+      setMenus([]);
+      setCompany(null);
+      setLoading(false);
+      return;
+    }
+    try {
+      const { user: u, menus: m, company: c } = await api.authMe();
+      setUser(u);
+      setMenus(m || []);
+      setCompany(c || null);
+    } catch {
+      localStorage.removeItem('auth_token');
+      setUser(null);
+      setMenus([]);
+      setCompany(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAuth();
+  }, []);
+
+  const login = async (email, password) => {
+    const { token, user: u } = await api.login({ email, password });
+    localStorage.setItem('auth_token', token);
+    const { menus: m } = await api.authMe();
+    setUser(u);
+    setMenus(m || []);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('currentUserName');
+    setUser(null);
+    setMenus([]);
+  };
+
+  const canAccess = (path) => {
+    if (!user) return false;
+    if (user.is_admin || user.role === 'admin') return true;
+    const norm = path === '/' ? '/' : path.replace(/\/$/, '') || '/';
+    return menus.some(m => m === norm || m === path);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, menus, company, loading, login, logout, loadAuth, canAccess }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+}

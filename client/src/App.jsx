@@ -1,5 +1,7 @@
-import { Routes, Route, NavLink } from 'react-router-dom';
-import Layout from './Layout';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import AppGate from './components/AppGate';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import ExpenseNew from './pages/ExpenseNew';
 import DocumentList from './pages/DocumentList';
@@ -10,23 +12,52 @@ import ExpenseList from './pages/ExpenseList';
 import DashboardDetail from './pages/DashboardDetail';
 import Masters from './pages/Masters';
 import Settings from './pages/Settings';
+import AdminCompany from './pages/admin/AdminCompany';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminRolePermissions from './pages/admin/AdminRolePermissions';
+import AdminApprovalSequence from './pages/admin/AdminApprovalSequence';
+import AdminEditHistory from './pages/admin/AdminEditHistory';
+import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
+
+const MENU_ROUTES = [
+  { path: '/', element: <Dashboard /> },
+  { path: '/dashboard/detail', element: <DashboardDetail /> },
+  { path: '/expense/new', element: <ExpenseNew /> },
+  { path: '/expense/:id/edit', element: <ExpenseNew /> },
+  { path: '/expenses', element: <ExpenseList /> },
+  { path: '/documents', element: <DocumentList /> },
+  { path: '/documents/:id', element: <DocumentDetail /> },
+  { path: '/import', element: <ImportCsv /> },
+  { path: '/approval', element: <ApprovalList /> },
+  { path: '/masters', element: <Masters /> },
+  { path: '/settings', element: <Settings /> },
+];
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="dashboard/detail" element={<DashboardDetail />} />
-        <Route path="expense/new" element={<ExpenseNew />} />
-        <Route path="expense/:id/edit" element={<ExpenseNew />} />
-        <Route path="expenses" element={<ExpenseList />} />
-        <Route path="documents" element={<DocumentList />} />
-        <Route path="documents/:id" element={<DocumentDetail />} />
-        <Route path="import" element={<ImportCsv />} />
-        <Route path="approval" element={<ApprovalList />} />
-        <Route path="masters" element={<Masters />} />
-        <Route path="settings" element={<Settings />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/" element={<AppGate />}>
+        <Route index element={<ProtectedRoute path="/"><Dashboard /></ProtectedRoute>} />
+        <Route path="dashboard/detail" element={<ProtectedRoute path="/"><DashboardDetail /></ProtectedRoute>} />
+        <Route path="expense/new" element={<ProtectedRoute path="/expense/new"><ExpenseNew /></ProtectedRoute>} />
+        <Route path="expense/:id/edit" element={<ProtectedRoute path="/expense/new"><ExpenseNew /></ProtectedRoute>} />
+        <Route path="expenses" element={<ProtectedRoute path="/expenses"><ExpenseList /></ProtectedRoute>} />
+        <Route path="documents" element={<ProtectedRoute path="/documents"><DocumentList /></ProtectedRoute>} />
+        <Route path="documents/:id" element={<ProtectedRoute path="/documents"><DocumentDetail /></ProtectedRoute>} />
+        <Route path="import" element={<ProtectedRoute path="/import"><ImportCsv /></ProtectedRoute>} />
+        <Route path="approval" element={<ProtectedRoute path="/approval"><ApprovalList /></ProtectedRoute>} />
+        <Route path="masters" element={<ProtectedRoute path="/masters"><Masters /></ProtectedRoute>} />
+        <Route path="settings" element={<ProtectedRoute path="/settings"><Settings /></ProtectedRoute>} />
+        <Route path="admin/company" element={<ProtectedRoute path="/admin/company"><AdminCompany /></ProtectedRoute>} />
+        <Route path="admin/users" element={<ProtectedRoute path="/admin/users"><ErrorBoundary><AdminUsers /></ErrorBoundary></ProtectedRoute>} />
+        <Route path="admin/role-permissions" element={<ProtectedRoute path="/admin/role-permissions"><AdminRolePermissions /></ProtectedRoute>} />
+        <Route path="admin/approval-sequence" element={<ProtectedRoute path="/admin/approval-sequence"><AdminApprovalSequence /></ProtectedRoute>} />
+        <Route path="admin/edit-history" element={<ProtectedRoute path="/admin/edit-history"><AdminEditHistory /></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );

@@ -1,0 +1,166 @@
+.main-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #fff;
+  overflow: hidden;
+}
+
+.main-bg {
+  position: absolute;
+  inset: 0;
+  background: url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1920') center/cover no-repeat;
+}
+
+.main-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(14, 53, 78, 0.85) 0%, rgba(13, 61, 107, 0.75) 50%, rgba(10, 45, 74, 0.9) 100%);
+}
+
+.main-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  text-align: center;
+}
+
+.main-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.main-logo {
+  max-width: 140px;
+  max-height: 100px;
+  margin-bottom: 1.25rem;
+}
+
+.main-company-name {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.main-tagline {
+  font-size: 1.1rem;
+  opacity: 0.95;
+  margin: 0;
+}
+
+.main-hero {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.main-hero-text {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  opacity: 0.95;
+}
+
+.main-hero-desc {
+  font-size: 1rem;
+  opacity: 0.85;
+  margin: 0;
+}
+
+.main-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.main-auth-btns {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.main-btn-signup {
+  display: inline-block;
+  padding: 0.9rem 2.5rem;
+  background: transparent;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.main-btn-signup:hover {
+  background: #fff;
+  color: #0d3d6b;
+}
+
+.main-brand {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.main-brand:hover {
+  opacity: 0.95;
+}
+
+.main-brand .main-logo {
+  margin-bottom: 0.5rem;
+}
+
+.main-company-info {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.85;
+  line-height: 1.6;
+}
+
+.main-company-info p {
+  margin: 0.2rem 0;
+}
+
+.main-copyright {
+  margin-top: 0.5rem !important;
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+
+.main-btn-login {
+  display: inline-block;
+  padding: 0.9rem 2.5rem;
+  background: #fff;
+  color: #0d3d6b;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 10px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.main-btn-login:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.main-loading {
+  font-size: 1.1rem;
+  opacity: 0.9;
+}

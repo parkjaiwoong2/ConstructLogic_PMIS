@@ -8,8 +8,8 @@ export default function Masters() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [newAccount, setNewAccount] = useState({ code: '', name: '' });
-  const [newProject, setNewProject] = useState({ code: '', name: '' });
+  const [newAccount, setNewAccount] = useState({ name: '' });
+  const [newProject, setNewProject] = useState({ name: '' });
 
   const load = async () => {
     setLoading(true);
@@ -37,8 +37,8 @@ export default function Masters() {
     setLoading(true);
     await nextTick();
     try {
-      await api.createAccountItem({ code: newAccount.code || undefined, name: newAccount.name });
-      setNewAccount({ code: '', name: '' });
+      await api.createAccountItem({ name: newAccount.name });
+      setNewAccount({ name: '' });
       load();
     } catch (err) {
       alert(err.message || '등록 실패');
@@ -68,8 +68,8 @@ export default function Masters() {
   const [deletingAccount, setDeletingAccount] = useState(null);
   const [deletingProject, setDeletingProject] = useState(null);
 
-  const startEditAccount = (a) => setEditingAccount({ id: a.id, code: a.code || '', name: a.name });
-  const startEditProject = (p) => setEditingProject({ id: p.id, code: p.code || '', name: p.name });
+  const startEditAccount = (a) => setEditingAccount({ id: a.id, name: a.name });
+  const startEditProject = (p) => setEditingProject({ id: p.id, name: p.name });
   const cancelEditAccount = () => setEditingAccount(null);
   const cancelEditProject = () => setEditingProject(null);
 
@@ -78,7 +78,7 @@ export default function Masters() {
     if (!editingAccount?.name?.trim()) return;
     setLoading(true);
     try {
-      await api.updateAccountItem(editingAccount.id, { code: editingAccount.code || undefined, name: editingAccount.name });
+      await api.updateAccountItem(editingAccount.id, { name: editingAccount.name });
       setEditingAccount(null);
       load();
     } catch (err) {
@@ -94,7 +94,7 @@ export default function Masters() {
     setLoading(true);
     await nextTick();
     try {
-      await api.updateProject(editingProject.id, { code: editingProject.code || undefined, name: editingProject.name });
+      await api.updateProject(editingProject.id, { name: editingProject.name });
       setEditingProject(null);
       load();
     } catch (err) {
@@ -156,11 +156,6 @@ export default function Masters() {
           <h2>계정과목 (항목)</h2>
           <form onSubmit={addAccount} className="add-form">
             <input
-              placeholder="코드 (선택)"
-              value={newAccount.code}
-              onChange={e => setNewAccount(a => ({ ...a, code: e.target.value }))}
-            />
-            <input
               placeholder="항목명 *"
               value={newAccount.name}
               onChange={e => setNewAccount(a => ({ ...a, name: e.target.value }))}
@@ -173,11 +168,6 @@ export default function Masters() {
               <li key={a.id}>
                 {editingAccount?.id === a.id ? (
                   <form className="edit-inline" onSubmit={saveAccount}>
-                    <input
-                      placeholder="코드"
-                      value={editingAccount.code}
-                      onChange={e => setEditingAccount(x => ({ ...x, code: e.target.value }))}
-                    />
                     <input
                       placeholder="항목명 *"
                       value={editingAccount.name}
@@ -208,11 +198,6 @@ export default function Masters() {
           <h2>현장 (공사)</h2>
           <form onSubmit={addProject} className="add-form">
             <input
-              placeholder="코드 (선택)"
-              value={newProject.code}
-              onChange={e => setNewProject(p => ({ ...p, code: e.target.value }))}
-            />
-            <input
               placeholder="현장명 *"
               value={newProject.name}
               onChange={e => setNewProject(p => ({ ...p, name: e.target.value }))}
@@ -225,11 +210,6 @@ export default function Masters() {
               <li key={p.id}>
                 {editingProject?.id === p.id ? (
                   <form className="edit-inline" onSubmit={saveProject}>
-                    <input
-                      placeholder="코드"
-                      value={editingProject.code}
-                      onChange={e => setEditingProject(x => ({ ...x, code: e.target.value }))}
-                    />
                     <input
                       placeholder="현장명 *"
                       value={editingProject.name}

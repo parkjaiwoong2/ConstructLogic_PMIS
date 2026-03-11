@@ -30,6 +30,10 @@
   color: var(--color-text-muted);
 }
 
+.form-row label .req {
+  color: #dc2626;
+}
+
 .form-row input,
 .form-row select {
   padding: 0.5rem 0.75rem;

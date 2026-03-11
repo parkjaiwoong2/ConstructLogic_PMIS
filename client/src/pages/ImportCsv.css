@@ -7,6 +7,10 @@
   margin-bottom: 1rem;
 }
 
+.import-csv .form-row label .req {
+  color: #dc2626;
+}
+
 .import-csv .form-row.hint {
   font-size: 0.9rem;
   color: var(--color-text-muted);

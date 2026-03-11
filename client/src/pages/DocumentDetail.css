@@ -36,6 +36,29 @@
   margin-bottom: 0.25rem;
 }
 
+.approval-progress-section {
+  margin-bottom: 1.5rem;
+}
+
+.approval-progress-section h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.approval-progress .progress-chain {
+  font-size: 0.95rem;
+}
+
+.approval-progress .rejected {
+  color: #dc2626;
+}
+
+.approval-progress .approval-comment {
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+}
+
 .doc-items {
   margin-top: 1.5rem;
 }
