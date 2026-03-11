@@ -1237,39 +1237,40 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       const userVal = userProjectForHeader || '';
       const totalVal = totalCardForHeader != null ? totalCardForHeader : '';
 
-      ws.mergeCells('A1:D1');
+      ws.mergeCells('A1:D2');
       ws.getCell('A1').value = `카드사용내역서 (${periodLabel})`;
-      ws.getCell('A1').alignment = { horizontal: 'center' };
+      ws.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
       ws.getCell('A1').font = { bold: true, size: 12 };
       ws.getCell('A1').border = fullBorder;
 
-      ws.mergeCells('E1:E2');
+      ws.mergeCells('E1:E5');
       ws.getCell('E1').value = '결재';
       ws.getCell('E1').alignment = { horizontal: 'center', vertical: 'middle' };
-      ws.getCell('F2').value = '작성';
-      ws.getCell('G2').value = '검토';
-      ws.getCell('H2').value = '검토';
-      ws.getCell('I2').value = '승인';
-      [1, 2].forEach(r => { [5, 6, 7, 8, 9].forEach(c => { ws.getCell(r, c).alignment = { horizontal: 'center', vertical: 'middle' }; }); });
+      ws.getCell('F1').value = '작성';
+      ws.getCell('G1').value = '검토';
+      ws.getCell('H1').value = '검토';
+      ws.getCell('I1').value = '승인';
+      [5, 6, 7, 8, 9].forEach(c => { ws.getCell(1, c).alignment = { horizontal: 'center', vertical: 'middle' }; });
       applyGridBorders(ws, 1, 5, 5, 9);
+      [2, 3, 4, 5].forEach(r => { ws.getRow(r).height = 26; });
 
-      ws.getCell('A3').value = '카드번호';
-      ws.getCell('B3').value = cardVal;
-      ws.getCell('C3').value = '';
-      ws.getCell('D3').value = '개인용도';
-      ws.getCell('A4').value = '사용자';
-      ws.getCell('B4').value = userVal;
+      ws.getCell('A4').value = '카드번호';
+      ws.getCell('B4').value = cardVal;
       ws.getCell('C4').value = '';
-      ws.getCell('D4').value = '공적용도';
-      ws.getCell('F4').value = totalVal;
-      ws.getCell('G4').value = totalVal;
-      if (typeof totalVal === 'number') { ws.getCell('F4').numFmt = '#,##0'; ws.getCell('G4').numFmt = '#,##0'; }
-      ws.mergeCells('H3:I4');
-      ws.getCell('H3').value = '비고';
-      ws.getCell('H3').alignment = { horizontal: 'center', vertical: 'middle' };
-      applyGridBorders(ws, 3, 1, 4, 9);
+      ws.getCell('D4').value = '개인용도';
+      ws.getCell('A5').value = '사용자';
+      ws.getCell('B5').value = userVal;
+      ws.getCell('C5').value = '';
+      ws.getCell('D5').value = '공적용도';
+      ws.getCell('F5').value = totalVal;
+      ws.getCell('G5').value = totalVal;
+      if (typeof totalVal === 'number') { ws.getCell('F5').numFmt = '#,##0'; ws.getCell('G5').numFmt = '#,##0'; }
+      ws.mergeCells('H4:I5');
+      ws.getCell('H4').value = '비고';
+      ws.getCell('H4').alignment = { horizontal: 'center', vertical: 'middle' };
+      applyGridBorders(ws, 4, 1, 5, 9);
 
-      const headerRow = 6;
+      const headerRow = 7;
       ws.getCell(headerRow, 1).value = '날짜';
       ws.getCell(headerRow, 2).value = '현장명';
       ws.getCell(headerRow, 3).value = '항목';
@@ -1280,7 +1281,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell(headerRow, 8).value = '비고';
       ws.getCell(headerRow, 9).value = '확인';
 
-      let dataStartRow = 7;
+      let dataStartRow = 8;
       let totalCardAmt = 0, totalCashAmt = 0, totalAmt = 0;
       sheetItems.forEach((i, idx) => {
         const r = dataStartRow + idx;
@@ -1358,10 +1359,10 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
     if (cardKeys.length === 0 && cashItems.length === 0) {
       addSheet(wb, [], '카드사용내역서', null, null, null, '');
       const ws = wb.worksheets[wb.worksheets.length - 1];
-      ws.mergeCells('A7:I7');
-      ws.getCell('A7').value = '조회된 데이터가 없습니다.';
-      ws.getCell('A7').alignment = { horizontal: 'center' };
-      applyGridBorders(ws, 7, 1, 7, 9);
+      ws.mergeCells('A8:I8');
+      ws.getCell('A8').value = '조회된 데이터가 없습니다.';
+      ws.getCell('A8').alignment = { horizontal: 'center' };
+      applyGridBorders(ws, 8, 1, 8, 9);
     }
 
     const buf = await wb.xlsx.writeBuffer();
