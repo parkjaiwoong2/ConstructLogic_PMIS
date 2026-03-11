@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, nextTick } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,11 +38,11 @@ export default function CardSettlement() {
   const [projects, setProjects] = useState([]);
   const [cards, setCards] = useState([]);
   const [cardSelect, setCardSelect] = useState('');
-  const cardDefaultSet = useRef(false);
   const [cardManualInput, setCardManualInput] = useState('');
+  const [companies, setCompanies] = useState([]);
   const [filter, setFilter] = useState(() => {
     const { period_from, period_to } = getDefaultPeriod();
-    return { period_from, period_to, project: '', settled: '' };
+    return { period_from, period_to, project: '', settled: '', company_id: '' };
   });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [loading, setLoading] = useState(false);
@@ -50,15 +50,19 @@ export default function CardSettlement() {
 
   const effectiveCardNo = cardSelect === MANUAL_INPUT ? cardManualInput.trim() : (cardSelect || '');
 
-  const buildParams = (p = page) => ({
-    period_from: (filter.period_from || '').trim() || undefined,
-    period_to: (filter.period_to || '').trim() || undefined,
-    project: (filter.project || '').trim() || undefined,
-    card_no: effectiveCardNo || undefined,
-    settled: (filter.settled || '').trim() || undefined,
-    limit: PAGE_SIZE,
-    offset: (p - 1) * PAGE_SIZE,
-  });
+  const buildParams = (p = page) => {
+    const params = {
+      period_from: (filter.period_from || '').trim() || undefined,
+      period_to: (filter.period_to || '').trim() || undefined,
+      project: (filter.project || '').trim() || undefined,
+      card_no: effectiveCardNo || undefined,
+      settled: (filter.settled || '').trim() || undefined,
+      limit: PAGE_SIZE,
+      offset: (p - 1) * PAGE_SIZE,
+    };
+    if (filter.company_id) params.company_id = filter.company_id;
+    return params;
+  };
 
   const load = async (pageOverride) => {
     const params = buildParams(pageOverride ?? page);
@@ -89,30 +93,39 @@ export default function CardSettlement() {
 
   useEffect(() => {
     load();
-  }, [filter.period_from, filter.period_to, filter.project, filter.settled, effectiveCardNo, page]);
+  }, [filter.period_from, filter.period_to, filter.project, filter.settled, filter.company_id, effectiveCardNo, page]);
 
   useEffect(() => {
-    api.getProjects().then(setProjects);
+    const cid = filter.company_id ? parseInt(filter.company_id, 10) : null;
+    (cid ? api.getProjects(cid) : api.getProjects()).then(setProjects).catch(() => setProjects([]));
+  }, [filter.company_id]);
+
+  useEffect(() => {
+    api.getCompanies({ list: 1 }).then(list => {
+      const arr = list || [];
+      setCompanies(arr);
+      setFilter(prev => {
+        if (prev.company_id) return prev;
+        const def = arr.length === 1 ? arr[0] : (arr.find(c => c.id === user?.company_id) || arr[0]);
+        return def ? { ...prev, company_id: String(def.id) } : prev;
+      });
+    }).catch(() => setCompanies([]));
   }, []);
 
   useEffect(() => {
     const loadCards = async () => {
       try {
-        const list = await api.getUserCards(isAdmin ? null : user?.name, isAdmin);
+        const companyId = filter.company_id || undefined;
+        const list = await api.getCorporateCards(companyId);
         setCards(Array.isArray(list) ? list : []);
-        if (!isAdmin && list?.length && !cardDefaultSet.current) {
-          const def = list.find(c => c.is_default) || list[0];
-          if (def) {
-            setCardSelect(def.card_no);
-            cardDefaultSet.current = true;
-          }
-        }
+        setCardSelect(''); // 회사 변경 시 전체 카드로 초기화
       } catch {
         setCards([]);
+        setCardSelect('');
       }
     };
     loadCards();
-  }, [isAdmin, user?.name]);
+  }, [filter.company_id]);
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -148,6 +161,7 @@ export default function CardSettlement() {
       if (filter.period_to) params.period_to = filter.period_to;
       if (filter.project) params.project = filter.project;
       if (effectiveCardNo) params.card_no = effectiveCardNo;
+      if (filter.company_id) params.company_id = filter.company_id;
       const res = await api.downloadBatchApprovalExcel(params);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -196,6 +210,12 @@ export default function CardSettlement() {
       <p className="subtitle">승인된 결재 문서만 목록에 표시됩니다. 선택한 항목을 정산 처리할 수 있습니다.</p>
 
       <div className="filters">
+        <select value={filter.company_id || ''} onChange={e => { setFilter(f => ({ ...f, company_id: e.target.value || '' })); setPage(1); }} disabled={companies.length === 1} style={{ minWidth: 140 }}>
+          <option value="">전체 회사</option>
+          {companies.map(c => (
+            <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
+          ))}
+        </select>
         <label className="filter-label">기간</label>
         <input
           type="date"
@@ -230,7 +250,7 @@ export default function CardSettlement() {
             <option value="">전체 카드</option>
             {cards.map(c => (
               <option key={c.id} value={c.card_no}>
-                {isAdmin ? `${c.card_no} (${c.user_name || ''})` : (c.label || c.card_no)}
+                {c.label ? `${c.card_no} (${c.label})` : c.card_no}
               </option>
             ))}
             <option value={MANUAL_INPUT}>직접입력</option>

@@ -19,16 +19,23 @@ const statusMap = {
   rejected: { label: '반려', color: '#dc2626' },
 };
 
+function getDefaultCompanyForCombo(list, user) {
+  if (!list?.length) return null;
+  if (list.length === 1) return list[0];
+  return list.find(c => c.id === user?.company_id) || list[0];
+}
+
 export default function DocumentList() {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
   const [docs, setDocs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [tab, setTab] = useState('all'); // 'all' | 'mine'
   const [currentUser, setCurrentUser] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
-  const [filter, setFilter] = useState({ status: '', project: '', period_from: '', period_to: '' });
+  const [filter, setFilter] = useState({ status: '', project: '', period_from: '', period_to: '', company_id: '' });
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(null);
   const [withdrawing, setWithdrawing] = useState(null);
@@ -41,6 +48,7 @@ export default function DocumentList() {
   };
   if (!effectiveFilter.period_from) delete effectiveFilter.period_from;
   if (!effectiveFilter.period_to) delete effectiveFilter.period_to;
+  if (!effectiveFilter.company_id) delete effectiveFilter.company_id;
 
   const loadDocs = async () => {
     setLoading(true);
@@ -61,11 +69,26 @@ export default function DocumentList() {
       setLoading(false);
     }
   };
-  useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.period_from, effectiveFilter.period_to, effectiveFilter.user_name, page]);
+  useEffect(() => { loadDocs(); }, [effectiveFilter.status, effectiveFilter.project, effectiveFilter.period_from, effectiveFilter.period_to, effectiveFilter.user_name, effectiveFilter.company_id, page]);
 
   useEffect(() => {
-    api.getProjects().then(setProjects);
+    const cid = filter.company_id ? parseInt(filter.company_id, 10) : null;
+    (cid ? api.getProjects(cid) : api.getProjects())
+      .then(setProjects)
+      .catch(() => setProjects([]));
+  }, [filter.company_id]);
+
+  useEffect(() => {
     api.getUsers().then(setUsers).catch(() => setUsers([]));
+    api.getCompanies({ list: 1 }).then(list => {
+      const arr = list || [];
+      setCompanies(arr);
+      setFilter(prev => {
+        if (prev.company_id) return prev;
+        const def = getDefaultCompanyForCombo(arr, user);
+        return def ? { ...prev, company_id: String(def.id) } : prev;
+      });
+    }).catch(() => setCompanies([]));
   }, []);
 
   useEffect(() => {
@@ -144,6 +167,12 @@ export default function DocumentList() {
       </div>
 
       <div className="filters">
+        <select value={filter.company_id || ''} onChange={e => { setFilter(f => ({ ...f, company_id: e.target.value || '' })); setPage(1); }} disabled={companies.length === 1}>
+          <option value="">전체 회사</option>
+          {companies.map(c => (
+            <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
+          ))}
+        </select>
         <label className="filter-label">기간</label>
         <input
           type="date"
@@ -189,6 +218,7 @@ export default function DocumentList() {
           <tbody>
             {docs.map(d => {
               const s = statusMap[d.status] || { label: d.status, color: '#666' };
+              const isAuthor = user?.name && d.user_name && String(user.name).trim() === String(d.user_name).trim();
               return (
                 <tr key={d.id}>
                   <td>{d.doc_no}</td>
@@ -199,7 +229,7 @@ export default function DocumentList() {
                   <td><span className="status-badge" style={{ background: s.color }}>{s.label}</span></td>
                   <td>
                     <Link to={`/documents/${d.id}`} className="link">보기</Link>
-                    {d.status === 'draft' && (
+                    {isAuthor && d.status === 'draft' && (
                       <>
                         <button
                           type="button"
@@ -212,7 +242,7 @@ export default function DocumentList() {
                         <Link to={`/expense/${d.id}/edit`} className="link ml">수정</Link>
                       </>
                     )}
-                    {d.status === 'pending' && (
+                    {isAuthor && d.status === 'pending' && (
                       <button
                         type="button"
                         className="link btn-link ml"

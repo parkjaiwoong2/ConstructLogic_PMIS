@@ -59,6 +59,77 @@
   font-size: 0.9em;
 }
 
+.approval-line-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.approval-line-table th,
+.approval-line-table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.approval-line-table th {
+  background: var(--color-bg-muted, #f3f4f6);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.approval-line-table .approved {
+  color: #059669;
+  font-weight: 500;
+}
+
+.approval-line-table .rejected {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.approval-line-table .approval-comment-cell {
+  max-width: 280px;
+  word-break: break-word;
+}
+
+.approval-line-table .approval-pending-row {
+  background: #fffbeb;
+}
+
+.approval-line-table .approval-pending-row td {
+  color: var(--color-text-muted);
+}
+
+.approval-status-text {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.approve-form .approve-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.approve-form .btn-reject {
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.approve-form .btn-reject:hover {
+  background: #fef2f2;
+}
+
+.approve-form textarea {
+  width: 100%;
+  min-width: 240px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-family: inherit;
+  resize: vertical;
+}
+
 .doc-items {
   margin-top: 1.5rem;
 }
@@ -99,4 +170,157 @@
 
 .back-link a {
   color: var(--color-text-muted);
+}
+
+.status-clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.status-clickable:hover {
+  color: var(--color-primary, #2563eb);
+}
+
+.approval-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.approval-modal {
+  background: var(--color-bg, #fff);
+  border-radius: 8px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.approval-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.approval-modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.approval-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 0 0.25rem;
+}
+
+.approval-modal-close:hover {
+  color: inherit;
+}
+
+.approval-modal-body {
+  padding: 1.25rem;
+}
+
+.approval-modal-status {
+  margin-bottom: 1rem;
+}
+
+.approval-modal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.approval-modal-table th,
+.approval-modal-table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.approval-modal-table th {
+  background: var(--color-bg-muted, #f3f4f6);
+  font-weight: 600;
+}
+
+.approval-modal-table .approved {
+  color: #059669;
+  font-weight: 500;
+}
+
+.approval-modal-table .rejected {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.approval-modal-table .approval-pending-row {
+  background: #fffbeb;
+}
+
+.approval-current {
+  color: #b45309;
+}
+
+.approval-pending-empty {
+  color: var(--color-text-muted);
+}
+
+.approval-modal-done {
+  margin: 1rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.approval-modal-warning {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+}
+
+.approval-modal-warning p {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.approval-modal-warning p:last-child {
+  margin-bottom: 0;
+}
+
+.approval-hint {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.approval-hint a {
+  color: var(--color-primary, #2563eb);
+}
+
+.approve-banner {
+  padding: 0.75rem 1rem;
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  color: #065f46;
 }

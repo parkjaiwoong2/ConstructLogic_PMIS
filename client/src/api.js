@@ -19,8 +19,14 @@ async function fetchJson(url, opts = {}) {
 }
 
 export const api = {
-  getAccountItems: () => fetchJson(`${API}/account-items`),
-  getProjects: () => fetchJson(`${API}/projects`),
+  getAccountItems: (companyId) => {
+    const q = companyId != null && companyId !== '' ? `?company_id=${companyId}` : '';
+    return fetchJson(`${API}/account-items${q}`);
+  },
+  getProjects: (companyId) => {
+    const q = companyId != null && companyId !== '' ? `?company_id=${companyId}` : '';
+    return fetchJson(`${API}/projects${q}`);
+  },
   suggestAccount: (q) => fetchJson(`${API}/suggest-account?q=${encodeURIComponent(q || '')}`),
   getDocuments: (params) => {
     const q = new URLSearchParams(params).toString();
@@ -58,11 +64,28 @@ export const api = {
   updateAccountItem: (id, body) => fetchJson(`${API}/account-items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteAccountItem: (id) => fetchJson(`${API}/account-items/${id}`, { method: 'DELETE' }),
   createProject: (body) => fetchJson(`${API}/projects`, { method: 'POST', body: JSON.stringify(body) }),
+  getMasterTemplatesAccountItems: () => fetchJson(`${API}/admin/master-templates/account-items`),
+  getMasterTemplatesProjects: () => fetchJson(`${API}/admin/master-templates/projects`),
+  createMasterTemplateAccountItem: (body) => fetchJson(`${API}/admin/master-templates/account-items`, { method: 'POST', body: JSON.stringify(body) }),
+  updateMasterTemplateAccountItem: (id, body) => fetchJson(`${API}/admin/master-templates/account-items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteMasterTemplateAccountItem: (id) => fetchJson(`${API}/admin/master-templates/account-items/${id}`, { method: 'DELETE' }),
+  createMasterTemplateProject: (body) => fetchJson(`${API}/admin/master-templates/projects`, { method: 'POST', body: JSON.stringify(body) }),
+  updateMasterTemplateProject: (id, body) => fetchJson(`${API}/admin/master-templates/projects/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteMasterTemplateProject: (id) => fetchJson(`${API}/admin/master-templates/projects/${id}`, { method: 'DELETE' }),
   importCsv: (body) => fetchJson(`${API}/import/csv`, { method: 'POST', body: JSON.stringify(body) }),
-  getUserCards: (userName, all) => {
+  getUserCompany: (userName) => fetchJson(`${API}/users/${encodeURIComponent(userName || '')}/company`),
+  getCorporateCards: (companyId) => {
+    const q = companyId != null && companyId !== '' ? `?company_id=${companyId}` : '';
+    return fetchJson(`${API}/corporate-cards${q}`);
+  },
+  createCorporateCard: (body) => fetchJson(`${API}/corporate-cards`, { method: 'POST', body: JSON.stringify(body) }),
+  updateCorporateCard: (id, body) => fetchJson(`${API}/corporate-cards/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteCorporateCard: (id) => fetchJson(`${API}/corporate-cards/${id}`, { method: 'DELETE' }),
+  getUserCards: (userName, all, companyId) => {
     const p = new URLSearchParams();
     if (all) p.set('all', '1');
     else if (userName) p.set('user_name', userName);
+    if (companyId != null && companyId !== '') p.set('company_id', companyId);
     return fetchJson(`${API}/user-cards${p.toString() ? '?' + p : ''}`);
   },
   createUserCard: (body) => fetchJson(`${API}/user-cards`, { method: 'POST', body: JSON.stringify(body) }),
@@ -73,13 +96,24 @@ export const api = {
   login: (body) => fetchJson(`${API}/auth/login`, { method: 'POST', body: JSON.stringify(body) }),
   signup: (body) => fetchJson(`${API}/auth/signup`, { method: 'POST', body: JSON.stringify(body) }),
   authMe: () => fetchJson(`${API}/auth/me`),
-  getCompanies: () => fetchJson(`${API}/companies`),
+  getCompanies: (params) => {
+    const q = params && Object.keys(params).length
+      ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v != null && v !== ''))).toString()
+      : '';
+    return fetchJson(`${API}/companies${q}`);
+  },
   getAdminCompanies: () => fetchJson(`${API}/admin/companies`),
   getAdminCompaniesWithSettings: () => fetchJson(`${API}/admin/companies?with_settings=1`),
   createAdminCompany: (body) => fetchJson(`${API}/admin/companies`, { method: 'POST', body: JSON.stringify(body) }),
   updateCompany: (id, body) => fetchJson(`${API}/companies/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   setCompanyDefault: (id) => fetchJson(`${API}/admin/companies/${id}/set-default`, { method: 'PUT' }),
+  setRepresentativeCompany: (companyId) => fetchJson(`${API}/users/me/representative-company`, { method: 'PUT', body: JSON.stringify({ company_id: companyId }) }),
   deleteAdminCompany: (id) => fetchJson(`${API}/admin/companies/${id}`, { method: 'DELETE' }),
+  createCompanyWithAdmin: (body) => fetchJson(`${API}/admin/super/company-with-admin`, { method: 'POST', body: JSON.stringify(body) }),
+  getAdminSuperCompaniesPage: (params) => {
+    const q = params ? new URLSearchParams(params).toString() : '';
+    return fetchJson(`${API}/admin/super/companies-page${q ? '?' + q : ''}`);
+  },
   getAdminUsers: (params) => {
     const q = params ? new URLSearchParams(params).toString() : '';
     return fetchJson(`${API}/admin/users${q ? '?' + q : ''}`);
@@ -88,15 +122,21 @@ export const api = {
   updateAdminUser: (id, body) => fetchJson(`${API}/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   approveAdminUser: (id) => fetchJson(`${API}/admin/users/${id}/approve`, { method: 'POST' }),
   getAdminRoles: () => fetchJson(`${API}/admin/roles`),
+  getRolesByCompany: (companyId) => fetchJson(`${API}/admin/roles-by-company${companyId ? '?company_id=' + companyId : ''}`),
   createAdminRole: (body) => fetchJson(`${API}/admin/roles`, { method: 'POST', body: JSON.stringify(body) }),
   updateAdminRole: (id, body) => fetchJson(`${API}/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteAdminRole: (id) => fetchJson(`${API}/admin/roles/${id}`, { method: 'DELETE' }),
-  getRoleMenus: () => fetchJson(`${API}/admin/role-menus`),
+  getRoleMenus: (companyId) => fetchJson(`${API}/admin/role-menus${companyId ? '?company_id=' + companyId : ''}`),
   updateRoleMenus: (body) => fetchJson(`${API}/admin/role-menus`, { method: 'PUT', body: JSON.stringify(body) }),
   getApprovalSequences: () => fetchJson(`${API}/admin/approval-sequences`),
-  getAdminBatchApprovalSequence: () => fetchJson(`${API}/admin/batch/approval-sequence`),
+  getAdminBatchApprovalSequence: (params) => {
+    const q = params && Object.keys(params).length
+      ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString()
+      : '';
+    return fetchJson(`${API}/admin/batch/approval-sequence${q}`);
+  },
   updateApprovalSequences: (body) => fetchJson(`${API}/admin/approval-sequences`, { method: 'PUT', body: JSON.stringify(body) }),
-  getAdminBatchRolePermissions: () => fetchJson(`${API}/admin/batch/role-permissions`),
+  getAdminBatchRolePermissions: (companyId) => fetchJson(`${API}/admin/batch/role-permissions${companyId ? '?company_id=' + companyId : ''}`),
   getAdminBatchUsersPage: (params) => {
     const q = params ? new URLSearchParams(params).toString() : '';
     return fetchJson(`${API}/admin/batch/users-page${q ? '?' + q : ''}`);

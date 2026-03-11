@@ -1,24 +1,46 @@
 import { useState, useEffect } from 'react';
 import { api, nextTick } from '../../api';
+import { useAuth } from '../../contexts/AuthContext';
 import ProgressBar from '../../components/ProgressBar';
 import './Admin.css';
 
 export default function AdminApprovalSequence() {
+  const { company } = useAuth();
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [sequences, setSequences] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [companyId, setCompanyId] = useState(null);
   const [autoApprove, setAutoApprove] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addRole, setAddRole] = useState('');
 
-  const load = async () => {
+  const defaultCompanyId = company?.id ?? null;
+
+  const load = async (companyId) => {
     setLoading(true);
     await nextTick();
     try {
-      const data = await api.getAdminBatchApprovalSequence();
+      const data = await api.getAdminBatchApprovalSequence({ company_id: companyId ?? defaultCompanyId });
+      setCompanies(Array.isArray(data?.companies) ? data.companies : []);
+      const defCompany = (data?.companies || []).find(c => c.is_default) || (data?.companies || [])[0];
+      const cid = companyId ?? data?.company?.id ?? defCompany?.id ?? defaultCompanyId;
+      setSelectedCompanyId(cid);
       setRoles(Array.isArray(data?.roles) ? data.roles : []);
-      setCompanyId(data?.company?.id ?? null);
+      setSequences(Array.isArray(data?.sequences) ? data.sequences : []);
+      setAutoApprove(data?.auto_approve ?? false);
+    } catch (e) {
+      alert(e.message || '로드 실패');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadForCompany = async (cid) => {
+    setLoading(true);
+    await nextTick();
+    try {
+      const data = await api.getAdminBatchApprovalSequence({ company_id: cid });
       setSequences(Array.isArray(data?.sequences) ? data.sequences : []);
       setAutoApprove(data?.auto_approve ?? false);
     } catch (e) {
@@ -29,6 +51,14 @@ export default function AdminApprovalSequence() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const handleCompanyChange = (e) => {
+    const val = e.target.value;
+    const cid = val === '' || val === 'all' ? null : parseInt(val, 10);
+    setSelectedCompanyId(cid);
+    if (cid) loadForCompany(cid);
+    else load();
+  };
 
   const roleLabel = (code) => roles.find(r => r.code === code)?.label ?? code;
 
@@ -57,15 +87,15 @@ export default function AdminApprovalSequence() {
   };
 
   const save = async () => {
-    if (!companyId) {
-      alert('회사 정보가 없습니다. 회사 등록을 먼저 완료하세요.');
+    if (!selectedCompanyId) {
+      alert('회사를 선택한 후 저장하세요.');
       return;
     }
     setLoading(true);
     try {
-      await api.updateApprovalSequences({ company_id: companyId, sequences });
+      await api.updateApprovalSequences({ company_id: selectedCompanyId, sequences });
       alert('저장되었습니다.');
-      load();
+      loadForCompany(selectedCompanyId);
     } catch (err) {
       alert(err.message || '저장 실패');
     } finally {
@@ -74,15 +104,15 @@ export default function AdminApprovalSequence() {
   };
 
   const saveAutoApprove = async () => {
-    if (!companyId) {
-      alert('회사 정보가 없습니다. 회사 등록을 먼저 완료하세요.');
+    if (!selectedCompanyId) {
+      alert('회사를 선택한 후 저장하세요.');
       return;
     }
     setSaving(true);
     try {
-      await api.updateCompanySettings({ company_id: companyId, auto_approve: autoApprove });
+      await api.updateCompanySettings({ company_id: selectedCompanyId, auto_approve: autoApprove });
       alert('저장되었습니다.');
-      load();
+      loadForCompany(selectedCompanyId);
     } catch (err) {
       alert(err.message || '저장 실패');
     } finally {
@@ -97,6 +127,19 @@ export default function AdminApprovalSequence() {
         <h1>결재순서</h1>
       </header>
       <p className="subtitle">결재자의 승인 순서를 지정합니다. 사용자 권한의 역할을 추가한 후 여기에서 결재 순서로 배치할 수 있습니다.</p>
+      <section className="card" style={{ marginBottom: '1rem' }}>
+        <h3>회사 선택</h3>
+        <div className="form-row" style={{ marginTop: '0.5rem' }}>
+          <select value={selectedCompanyId ?? ''} onChange={handleCompanyChange} style={{ minWidth: 180 }}>
+            <option value="">회사 선택</option>
+            {companies.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.is_default ? ' (대표)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
       <section className="card">
         <p className="desc">역할 추가: 결재에 참여할 역할을 선택 후 추가. 작성자(author)와 관리자(admin)는 제외됩니다.</p>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -134,7 +177,7 @@ export default function AdminApprovalSequence() {
             자동승인 (결재자 없이 제출 시 즉시 승인)
           </label>
         </div>
-        <button className="btn btn-primary" onClick={saveAutoApprove} disabled={saving || !companyId} style={{ marginTop: '0.5rem' }}>
+        <button className="btn btn-primary" onClick={saveAutoApprove} disabled={saving || !selectedCompanyId} style={{ marginTop: '0.5rem' }}>
           {saving ? '저장 중...' : '저장'}
         </button>
       </section>

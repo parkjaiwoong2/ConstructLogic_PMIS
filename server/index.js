@@ -68,6 +68,12 @@ const COMPANY_DEFAULTS = { name: 'Construct Logic', logo_url: null, address: nul
 
 app.get('/api/companies', async (req, res) => {
   try {
+    if (req.query.list === '1' || req.query.list === 'true') {
+      if (!req.user?.id) return res.json([]);
+      const userRow = await db.queryOne('SELECT id, is_admin FROM auth_users WHERE id = $1', [req.user.id]);
+      const rows = userRow ? await getCompaniesForUser({ id: userRow.id, is_admin: userRow.is_admin }) : [];
+      return res.json(rows || []);
+    }
     let row = await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies WHERE is_default = true');
     if (!row) row = await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies ORDER BY id LIMIT 1');
     res.json(row ? { ...COMPANY_DEFAULTS, ...row } : COMPANY_DEFAULTS);
@@ -79,20 +85,43 @@ app.get('/api/companies', async (req, res) => {
 app.get('/api/auth/me', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const [user, companyRow] = await Promise.all([
-      db.queryOne('SELECT id, email, name, role, is_admin, company_id FROM auth_users WHERE id = $1', [req.user.id]),
-      (async () => {
-        let r = await db.queryOne('SELECT id, name, logo_url FROM companies WHERE is_default = true');
-        return r || db.queryOne('SELECT id, name, logo_url FROM companies ORDER BY id LIMIT 1');
-      })()
-    ]);
+    const user = await db.queryOne('SELECT id, email, name, role, is_admin, company_id FROM auth_users WHERE id = $1', [req.user.id]);
+    const repCompanyId = await getUserRepresentativeCompany(req.user.id);
+    const companyRow = repCompanyId
+      ? await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies WHERE id = $1', [repCompanyId])
+      : await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies ORDER BY id LIMIT 1');
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
-    const hasFullAccess = user.is_admin || user.role === 'admin';
-    const menus = hasFullAccess
-      ? ['/', '/expense/new', '/expenses', '/import', '/documents', '/approval', '/card-settlement', '/masters', '/settings', '/admin/company', '/admin/users', '/admin/role-permissions', '/admin/approval-sequence']
-      : (await db.query('SELECT menu_path FROM role_menus WHERE role = $1', [user.role])).map(r => r.menu_path);
+    const isSuperAdmin = user.is_admin === true;
+    const isCompanyAdmin = user.role === 'admin' && !user.is_admin;
+    let menus;
+    if (isSuperAdmin) {
+      menus = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/permissions', '/admin/edit-history', '/admin/super'];
+    } else if (isCompanyAdmin) {
+      const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
+      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, 'company_admin']) : [];
+      menus = (rows || []).map(r => r.menu_path);
+    } else {
+      const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
+      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, user.role]) : [];
+      menus = (rows || []).map(r => r.menu_path);
+    }
     const company = companyRow ? { ...COMPANY_DEFAULTS, ...companyRow } : COMPANY_DEFAULTS;
     res.json({ user, menus: [...new Set(menus)], company });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/users/me/representative-company', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const { company_id } = req.body;
+  const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
+  if (!cid) return res.status(400).json({ error: '회사를 선택하세요.' });
+  try {
+    const belongs = await userBelongsToCompany(req.user.id, cid);
+    if (!belongs) return res.status(403).json({ error: '소속 회사만 대표로 설정할 수 있습니다.' });
+    await db.run('UPDATE auth_users SET company_id = $1 WHERE id = $2', [cid, req.user.id]);
+    res.json({ ok: true, company_id: cid });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -110,9 +139,39 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.get('/api/account-items', async (req, res) => {
+  let company_id = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
+    ? parseInt(req.query.company_id, 10) : null;
+  if (company_id == null && req.user?.id) {
+    company_id = await getUserRepresentativeCompany(req.user.id);
+  }
   try {
-    const rows = await db.query('SELECT id, code, name, display_order FROM account_items ORDER BY display_order');
-    res.json(rows);
+    let sql = 'SELECT id, code, name, display_order, company_id FROM account_items';
+    const params = [];
+    if (company_id != null) {
+      sql += ' WHERE company_id = $1';
+      params.push(company_id);
+    } else {
+      return res.json([]);
+    }
+    sql += ' ORDER BY display_order, id';
+    const rows = await db.query(sql, params);
+    res.json(rows || []);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/users/:userName/company', async (req, res) => {
+  const userName = req.params.userName?.trim();
+  if (!userName) return res.status(400).json({ error: '사용자명 필수' });
+  try {
+    const row = await db.queryOne(
+      `SELECT au.company_id, c.name as company_name FROM auth_users au
+       LEFT JOIN companies c ON c.id = au.company_id WHERE au.name = $1`,
+      [userName]
+    );
+    if (!row) return res.json({ company_id: null, company_name: null });
+    res.json({ company_id: row.company_id, company_name: row.company_name || null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -128,9 +187,23 @@ app.get('/api/users', async (req, res) => {
 });
 
 app.get('/api/projects', async (req, res) => {
+  let company_id = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
+    ? parseInt(req.query.company_id, 10) : null;
+  if (company_id == null && req.user?.id) {
+    company_id = await getUserRepresentativeCompany(req.user.id);
+  }
   try {
-    const rows = await db.query('SELECT id, code, name FROM projects ORDER BY name');
-    res.json(rows);
+    let sql = 'SELECT id, code, name, company_id FROM projects';
+    const params = [];
+    if (company_id != null) {
+      sql += ' WHERE company_id = $1';
+      params.push(company_id);
+    } else {
+      return res.json([]);
+    }
+    sql += ' ORDER BY name';
+    const rows = await db.query(sql, params);
+    res.json(rows || []);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -156,29 +229,35 @@ app.get('/api/suggest-account', async (req, res) => {
 
 app.get('/api/card-settlement', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const { period_from, period_to, project, card_no, settled, limit, offset } = req.query;
+  const { period_from, period_to, project, card_no, settled, company_id, limit, offset } = req.query;
   try {
-    const where = ['status = \'approved\''];
+    let fromClause = 'FROM expense_documents ed';
+    const where = ['ed.status = \'approved\''];
     const params = [];
-    if (project) { params.push(project); where.push(`project_name = $${params.length}`); }
+    const companyIds = (company_id == null || company_id === '') && req.user?.id
+      ? await getCurrentUserCompanyIds(req.user.id)
+      : null;
+    const companyFilter = buildCompanyFilterJoin(company_id, companyIds, params);
+    if (companyFilter) { fromClause += companyFilter.join; where.push(companyFilter.whereCond); }
+    if (project) { params.push(project); where.push(`ed.project_name = $${params.length}`); }
     if (card_no != null && String(card_no).trim() !== '') {
       params.push(`%${String(card_no).trim()}%`);
-      where.push(`(card_no ILIKE $${params.length})`);
+      where.push(`(ed.card_no ILIKE $${params.length})`);
     }
-    if (period_from) { params.push(period_from); where.push(`period_end >= $${params.length}`); }
-    if (period_to) { params.push(period_to); where.push(`period_start <= $${params.length}`); }
-    if (settled === 'y' || settled === '1' || settled === 'true') where.push('settled_at IS NOT NULL');
-    else if (settled === 'n' || settled === '0' || settled === 'false') where.push('settled_at IS NULL');
+    if (period_from) { params.push(period_from); where.push(`ed.period_end >= $${params.length}`); }
+    if (period_to) { params.push(period_to); where.push(`ed.period_start <= $${params.length}`); }
+    if (settled === 'y' || settled === '1' || settled === 'true') where.push('ed.settled_at IS NOT NULL');
+    else if (settled === 'n' || settled === '0' || settled === 'false') where.push('ed.settled_at IS NULL');
     const whereClause = ' WHERE ' + where.join(' AND ');
     const limitVal = limit != null ? Math.min(parseInt(limit, 10) || 50, 100) : 50;
     const offsetVal = offset != null ? Math.max(0, parseInt(offset, 10)) : 0;
     const [countRes, rowsRes, sumRes] = await Promise.all([
-      db.query(`SELECT COUNT(*)::int as total FROM expense_documents${whereClause}`, params),
-      db.query(`SELECT id, doc_no, user_name, project_name, period_start, period_end, card_no, total_card_amount, total_cash_amount, settled_at
-        FROM expense_documents${whereClause}
-        ORDER BY period_start DESC, id DESC
+      db.query(`SELECT COUNT(*)::int as total ${fromClause}${whereClause}`, params),
+      db.query(`SELECT ed.id, ed.doc_no, ed.user_name, ed.project_name, ed.period_start, ed.period_end, ed.card_no, ed.total_card_amount, ed.total_cash_amount, ed.settled_at
+        ${fromClause}${whereClause}
+        ORDER BY ed.period_start DESC, ed.id DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limitVal, offsetVal]),
-      db.query(`SELECT COALESCE(SUM(total_card_amount), 0)::bigint as sum_card, COALESCE(SUM(total_cash_amount), 0)::bigint as sum_cash FROM expense_documents${whereClause}`, params),
+      db.query(`SELECT COALESCE(SUM(ed.total_card_amount), 0)::bigint as sum_card, COALESCE(SUM(ed.total_cash_amount), 0)::bigint as sum_cash ${fromClause}${whereClause}`, params),
     ]);
     const sumRow = sumRes[0];
     res.json({
@@ -213,29 +292,36 @@ app.post('/api/card-settlement/process', async (req, res) => {
 });
 
 app.get('/api/documents', async (req, res) => {
-  const { status, project, user_name, card_no, period_from, period_to, limit, offset } = req.query;
+  const { status, project, user_name, card_no, period_from, period_to, company_id, limit, offset } = req.query;
   try {
     const where = [];
     const params = [];
-    if (status) { params.push(status); where.push(`status = $${params.length}`); }
-    if (project) { params.push(project); where.push(`project_name = $${params.length}`); }
-    if (user_name) { params.push(user_name); where.push(`user_name = $${params.length}`); }
+    let fromClause = 'FROM expense_documents ed';
+    const companyIds = (company_id == null || company_id === '') && req.user?.id
+      ? await getCurrentUserCompanyIds(req.user.id)
+      : null;
+    const companyFilter = buildCompanyFilterJoin(company_id, companyIds, params);
+    if (companyFilter) { fromClause += companyFilter.join; where.push(companyFilter.whereCond); }
+    if (status) { params.push(status); where.push(`ed.status = $${params.length}`); }
+    if (project) { params.push(project); where.push(`ed.project_name = $${params.length}`); }
+    if (user_name) { params.push(user_name); where.push(`ed.user_name = $${params.length}`); }
     if (card_no != null && String(card_no).trim() !== '') {
       params.push(`%${String(card_no).trim()}%`);
-      where.push(`(card_no ILIKE $${params.length})`);
+      where.push(`(ed.card_no ILIKE $${params.length})`);
     }
-    if (period_from) { params.push(period_from); where.push(`period_end >= $${params.length}`); }
-    if (period_to) { params.push(period_to); where.push(`period_start <= $${params.length}`); }
+    if (period_from) { params.push(period_from); where.push(`ed.period_end >= $${params.length}`); }
+    if (period_to) { params.push(period_to); where.push(`ed.period_start <= $${params.length}`); }
     const whereClause = where.length ? ' WHERE ' + where.join(' AND ') : '';
-    const baseSql = `SELECT id, doc_no, user_name, project_name, period_start, period_end,
-      status, total_card_amount, total_cash_amount, created_at
-      FROM expense_documents${whereClause}`;
+    const baseSql = `SELECT ed.id, ed.doc_no, ed.user_name, ed.project_name, ed.period_start, ed.period_end,
+      ed.status, ed.total_card_amount, ed.total_cash_amount, ed.created_at
+      ${fromClause}${whereClause}`;
     let rowParams = [...params];
-    let pageSql = baseSql + ' ORDER BY created_at DESC';
+    let pageSql = baseSql + ' ORDER BY ed.created_at DESC';
     if (limit != null) { rowParams.push(parseInt(limit, 10)); pageSql += ` LIMIT $${rowParams.length}`; }
     if (offset != null) { rowParams.push(parseInt(offset, 10)); pageSql += ` OFFSET $${rowParams.length}`; }
+    const countSql = `SELECT COUNT(*)::int as total ${fromClause}${whereClause}`;
     const [countRes, rowsRes] = await Promise.all([
-      db.query(`SELECT COUNT(*)::int as total FROM expense_documents${whereClause}`, params),
+      db.query(countSql, params),
       db.query(pageSql, rowParams),
     ]);
     const total = countRes[0]?.total ?? 0;
@@ -265,11 +351,22 @@ app.get('/api/documents/:id', async (req, res) => {
       `, [req.params.id]),
       db.query('SELECT approver_name, sequence, action, comment FROM approval_history WHERE document_id = $1 ORDER BY sequence ASC, id ASC', [req.params.id]),
     ]);
-    let companyId = null;
-    try {
-      const cu = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [doc.user_name]);
-      companyId = cu?.company_id;
-    } catch (_) {}
+    let companyId = doc.company_id;
+    if (!companyId && doc.user_name) {
+      try {
+        const au = await db.queryOne('SELECT id, company_id FROM auth_users WHERE name = $1 LIMIT 1', [doc.user_name]);
+        if (au) {
+          companyId = au.company_id;
+          if (!companyId) {
+            const ids = await getCompanyIdsForUserIncludingSameEmail(au.id);
+            if (ids?.length) {
+              const defRow = await db.queryOne('SELECT id FROM companies WHERE is_default = true');
+              companyId = (defRow && ids.includes(defRow.id)) ? defRow.id : ids[0];
+            }
+          }
+        }
+      } catch (_) {}
+    }
     if (!companyId) {
       const def = await db.queryOne('SELECT id FROM companies WHERE is_default = true');
       companyId = def?.id;
@@ -286,14 +383,71 @@ app.get('/api/documents/:id', async (req, res) => {
       const roleLabel = sequences[idx] ? (roleLabelMap[sequences[idx].role] || sequences[idx].role) : (idx === 0 ? '검토' : '승인');
       return { label: roleLabel, name: h.approver_name, action: h.action, comment: h.comment };
     });
-    res.json({ ...doc, items, approval_steps: steps });
+    let hideApprovalContent = false;
+    let canApprove = false;
+    if (req.user?.id) {
+      const u = await db.queryOne('SELECT name, role FROM auth_users WHERE id = $1', [req.user.id]);
+      const isAuthor = u?.name && doc.user_name && String(u.name).trim() === String(doc.user_name).trim();
+      hideApprovalContent = !!isAuthor;
+      if (!isAuthor && doc.status === 'pending' && sequences?.length > 0 && history.length < sequences.length) {
+        const nextRole = sequences[history.length]?.role;
+        const belongs = companyId ? await userBelongsToCompany(req.user.id, companyId) : false;
+        canApprove = !!nextRole && u?.role === nextRole && belongs;
+      }
+    }
+    let approvalNextInfo = null;
+    let approvalPendingList = [];
+    if (doc.status === 'pending' && sequences?.length > 0 && history.length < sequences.length) {
+      const pendingRoles = sequences.slice(history.length);
+      for (const seq of pendingRoles) {
+        const roleLabel = roleLabelMap[seq.role] || seq.role;
+        const approvers = companyId
+          ? await db.query(
+              `SELECT DISTINCT au.name FROM auth_users au
+               WHERE au.role = $1 AND au.is_approved = true
+               AND (au.company_id = $2 OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $2))
+               ORDER BY au.name`,
+              [seq.role, companyId]
+            )
+          : [];
+        approvalPendingList.push({ role: seq.role, roleLabel, names: (approvers || []).map(r => r.name).filter(Boolean) });
+      }
+      if (approvalPendingList.length) approvalNextInfo = approvalPendingList[0];
+    }
+    if (doc.status === 'draft' && sequences?.length > 0) {
+      for (const seq of sequences) {
+        const roleLabel = roleLabelMap[seq.role] || seq.role;
+        const approvers = companyId
+          ? await db.query(
+              `SELECT DISTINCT au.name FROM auth_users au
+               WHERE au.role = $1 AND au.is_approved = true
+               AND (au.company_id = $2 OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $2))
+               ORDER BY au.name`,
+              [seq.role, companyId]
+            )
+          : [];
+        approvalPendingList.push({ role: seq.role, roleLabel, names: (approvers || []).map(r => r.name).filter(Boolean) });
+      }
+    }
+    const configured = (sequences || []).length > 0;
+    res.json({
+      ...doc,
+      items,
+      approval_steps: steps,
+      approval_line: sequences || [],
+      hide_approval_content: hideApprovalContent,
+      can_approve: canApprove,
+      approval_next_info: approvalNextInfo,
+      approval_pending_list: approvalPendingList || [],
+      approval_sequences_configured: configured,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
 app.post('/api/documents', async (req, res) => {
-  const { user_name, project_id, project_name, period_start, period_end, card_no, items } = req.body;
+  const { user_name, project_id, project_name, period_start, period_end, card_no, items, company_id } = req.body;
   if (!user_name || !project_name || !period_start || !period_end || !items?.length) {
     return res.status(400).json({ error: '필수 항목 누락' });
   }
@@ -301,6 +455,16 @@ app.post('/api/documents', async (req, res) => {
     return res.status(400).json({ error: '카드번호를 입력해 주세요.' });
   }
   try {
+    let docCompanyId = (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10))) ? parseInt(company_id, 10) : null;
+    if (!docCompanyId) {
+      const cu = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [user_name]);
+      docCompanyId = cu?.company_id;
+    }
+    if (!docCompanyId) {
+      const unnon = await db.queryOne("SELECT id FROM companies WHERE name = '언넌플랫폼' LIMIT 1");
+      docCompanyId = unnon?.id || (await db.queryOne('SELECT id FROM companies WHERE is_default = true'))?.id || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
+    }
+    if (!docCompanyId) return res.status(400).json({ error: '회사 정보를 확인할 수 없습니다. 관리자에게 문의하세요.' });
     const docNo = `CARD-${Date.now()}`;
     let totalCard = 0, totalCash = 0;
     items.forEach(i => {
@@ -308,9 +472,9 @@ app.post('/api/documents', async (req, res) => {
       totalCash += parseInt(i.cash_amount || 0, 10);
     });
     const r = await db.run(`
-      INSERT INTO expense_documents (doc_no, user_name, project_id, project_name, period_start, period_end, card_no, status, total_card_amount, total_cash_amount)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8, $9) RETURNING id
-    `, [docNo, user_name, project_id || null, project_name, period_start, period_end, card_no || null, totalCard, totalCash]);
+      INSERT INTO expense_documents (doc_no, user_name, project_id, project_name, period_start, period_end, card_no, status, total_card_amount, total_cash_amount, company_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8, $9, $10) RETURNING id
+    `, [docNo, user_name, project_id || null, project_name, period_start, period_end, card_no || null, totalCard, totalCash, docCompanyId]);
     const docId = r.rows[0].id;
     await db.insertExpenseItems(null, items, docId, project_id || null, project_name);
     res.json({ id: docId, doc_no: docNo });
@@ -320,31 +484,46 @@ app.post('/api/documents', async (req, res) => {
 });
 
 app.put('/api/documents/:id', async (req, res) => {
-  const { user_name, project_id, project_name, period_start, period_end, card_no, items } = req.body;
+  const { user_name, project_id, project_name, period_start, period_end, card_no, items, company_id } = req.body;
   const id = parseInt(req.params.id, 10);
   if (!id || !items?.length) return res.status(400).json({ error: '필수 항목 누락' });
   try {
-    const doc = await db.queryOne('SELECT status FROM expense_documents WHERE id = $1', [id]);
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const doc = await db.queryOne('SELECT status, user_name FROM expense_documents WHERE id = $1', [id]);
     if (!doc) return res.status(404).json({ error: 'Not found' });
+    const u = await db.queryOne('SELECT id, name, is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
     let isAdminEdit = false;
     if (doc.status !== 'draft') {
-      if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
-      const u = await db.queryOne('SELECT id, name, is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
       if (!u || (u.is_admin !== true && u.role !== 'admin')) {
         return res.status(403).json({ error: '작성중 상태에서만 수정 가능합니다. 관리자만 결재대기·승인·반려 문서를 수정할 수 있습니다.' });
       }
       isAdminEdit = true;
+    } else {
+      const isAuthor = u?.name && doc.user_name && String(u.name).trim() === String(doc.user_name).trim();
+      const isAdmin = u && (u.is_admin === true || u.role === 'admin');
+      if (!isAuthor && !isAdmin) return res.status(403).json({ error: '본인이 작성한 문서만 수정할 수 있습니다.' });
+      if (isAdmin && !isAuthor) isAdminEdit = true;
     }
     let totalCard = 0, totalCash = 0;
     items.forEach(i => {
       totalCard += parseInt(i.card_amount || 0, 10);
       totalCash += parseInt(i.cash_amount || 0, 10);
     });
+    let docCompanyId = (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10))) ? parseInt(company_id, 10) : null;
+    if (!docCompanyId && user_name) {
+      const cu = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [user_name]);
+      docCompanyId = cu?.company_id;
+    }
+    if (!docCompanyId) {
+      const unnon = await db.queryOne("SELECT id FROM companies WHERE name = '언넌플랫폼' LIMIT 1");
+      docCompanyId = unnon?.id || (await db.queryOne('SELECT id FROM companies WHERE is_default = true'))?.id || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
+    }
+    if (!docCompanyId) return res.status(400).json({ error: '회사 정보를 확인할 수 없습니다.' });
     await db.run(`
       UPDATE expense_documents SET user_name=$1, project_id=$2, project_name=$3, period_start=$4, period_end=$5, card_no=$6,
-        total_card_amount=$7, total_cash_amount=$8, updated_at=now()
-      WHERE id=$9
-    `, [user_name || '', project_id, project_name || '', period_start || '', period_end || '', card_no || null, totalCard, totalCash, id]);
+        total_card_amount=$7, total_cash_amount=$8, company_id=$9, updated_at=now()
+      WHERE id=$10
+    `, [user_name || '', project_id, project_name || '', period_start || '', period_end || '', card_no || null, totalCard, totalCash, docCompanyId, id]);
     await db.run('DELETE FROM expense_items WHERE document_id = $1', [id]);
     await db.insertExpenseItems(null, items, id, project_id || null, project_name);
     if (isAdminEdit && req.user?.id) {
@@ -362,13 +541,19 @@ app.put('/api/documents/:id', async (req, res) => {
 
 app.post('/api/documents/:id/submit', async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT id, status, card_no, user_name FROM expense_documents WHERE id = $1', [req.params.id]);
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const doc = await db.queryOne('SELECT id, status, card_no, user_name, company_id FROM expense_documents WHERE id = $1', [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Not found' });
+    const u = await db.queryOne('SELECT name FROM auth_users WHERE id = $1', [req.user.id]);
+    const isAuthor = u?.name && doc.user_name && String(u.name).trim() === String(doc.user_name).trim();
+    if (!isAuthor) return res.status(403).json({ error: '본인이 작성한 문서만 결재 요청할 수 있습니다.' });
     if (doc.status !== 'draft') return res.status(400).json({ error: '작성중 문서만 결재 요청할 수 있습니다.' });
     if (!doc.card_no || !String(doc.card_no).trim()) return res.status(400).json({ error: '카드번호가 없습니다. 문서를 수정해 카드번호를 입력한 후 기안해 주세요.' });
-    let companyId = null;
-    const cu = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [doc.user_name]);
-    if (cu?.company_id) companyId = cu.company_id;
+    let companyId = doc.company_id;
+    if (!companyId) {
+      const cu = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [doc.user_name]);
+      companyId = cu?.company_id;
+    }
     if (!companyId) {
       const def = await db.queryOne('SELECT id FROM companies WHERE is_default = true');
       companyId = def?.id || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
@@ -376,7 +561,7 @@ app.post('/api/documents/:id/submit', async (req, res) => {
     const settings = companyId ? await db.queryOne('SELECT auto_approve FROM company_settings WHERE company_id = $1', [companyId]) : null;
     const autoApprove = settings?.auto_approve === true;
     const newStatus = autoApprove ? 'approved' : 'pending';
-    const r = await db.run(`UPDATE expense_documents SET status=$1, updated_at=now() WHERE id=$2 AND status='draft' RETURNING id`, [newStatus, req.params.id]);
+    const r = await db.run(`UPDATE expense_documents SET status=$1, company_id=COALESCE(company_id,$3), updated_at=now() WHERE id=$2 AND status='draft' RETURNING id`, [newStatus, req.params.id, companyId]);
     if (!r.rows?.length) return res.status(400).json({ error: '작성중 문서만 결재 요청할 수 있습니다.' });
     if (autoApprove) {
       await db.run('INSERT INTO approval_history (document_id, approver_name, action, comment) VALUES ($1, $2, $3, $4)', [req.params.id, '자동승인', 'approved', '자동승인']);
@@ -389,6 +574,12 @@ app.post('/api/documents/:id/submit', async (req, res) => {
 
 app.post('/api/documents/:id/withdraw', async (req, res) => {
   try {
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const doc = await db.queryOne('SELECT user_name FROM expense_documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Not found' });
+    const u = await db.queryOne('SELECT name FROM auth_users WHERE id = $1', [req.user.id]);
+    const isAuthor = u?.name && doc.user_name && String(u.name).trim() === String(doc.user_name).trim();
+    if (!isAuthor) return res.status(403).json({ error: '본인이 작성한 문서만 기안 취소할 수 있습니다.' });
     const r = await db.run("UPDATE expense_documents SET status='draft', updated_at=now() WHERE id=$1 AND status='pending' RETURNING id", [req.params.id]);
     if (!r.rows?.length) return res.status(400).json({ error: '결재대기 상태에서만 기안 취소할 수 있습니다.' });
     res.json({ ok: true });
@@ -399,8 +590,12 @@ app.post('/api/documents/:id/withdraw', async (req, res) => {
 
 app.delete('/api/documents/:id', async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT status FROM expense_documents WHERE id = $1', [req.params.id]);
+    if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+    const doc = await db.queryOne('SELECT status, user_name FROM expense_documents WHERE id = $1', [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Not found' });
+    const u = await db.queryOne('SELECT name FROM auth_users WHERE id = $1', [req.user.id]);
+    const isAuthor = u?.name && doc.user_name && String(u.name).trim() === String(doc.user_name).trim();
+    if (!isAuthor) return res.status(403).json({ error: '본인이 작성한 문서만 삭제할 수 있습니다.' });
     if (doc.status !== 'draft') return res.status(400).json({ error: '작성중(기안 전) 문서만 삭제할 수 있습니다.' });
     await db.run('DELETE FROM expense_items WHERE document_id = $1', [req.params.id]);
     await db.run('DELETE FROM expense_documents WHERE id = $1', [req.params.id]);
@@ -415,11 +610,37 @@ app.post('/api/documents/:id/approve', async (req, res) => {
   const { action, comment } = req.body;
   if (!['approved', 'rejected'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
   try {
-    const u = await db.queryOne('SELECT name FROM auth_users WHERE id = $1', [req.user.id]);
-    const approverName = u?.name || '결재자';
-    const cnt = await db.queryOne('SELECT COALESCE(MAX(sequence), 0) + 1 as next_seq FROM approval_history WHERE document_id = $1', [req.params.id]);
-    await db.run('UPDATE expense_documents SET status=$1, updated_at=now() WHERE id=$2', [action === 'approved' ? 'approved' : 'rejected', req.params.id]);
-    await db.run('INSERT INTO approval_history (document_id, approver_name, sequence, action, comment) VALUES ($1, $2, $3, $4, $5)', [req.params.id, approverName, cnt?.next_seq || 1, action, comment || null]);
+    const doc = await db.queryOne('SELECT id, status, user_name, company_id FROM expense_documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Not found' });
+    if (doc.status !== 'pending') return res.status(400).json({ error: '결재대기 문서만 결재할 수 있습니다.' });
+    const u = await db.queryOne('SELECT name, role FROM auth_users WHERE id = $1', [req.user.id]);
+    if (!u) return res.status(401).json({ error: 'Unauthorized' });
+    const isAuthor = u.name && doc.user_name && String(u.name).trim() === String(doc.user_name).trim();
+    if (isAuthor) return res.status(403).json({ error: '작성자는 결재할 수 없습니다.' });
+    let companyId = doc.company_id;
+    if (!companyId) {
+      const cu = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [doc.user_name]);
+      companyId = cu?.company_id || (await db.queryOne('SELECT id FROM companies WHERE is_default = true'))?.id || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
+    }
+    const belongs = companyId ? await userBelongsToCompany(req.user.id, companyId) : false;
+    if (!belongs) return res.status(403).json({ error: '문서 소속 회사의 결재자만 결재할 수 있습니다.' });
+    const sequences = companyId ? await db.query('SELECT role FROM approval_sequences WHERE company_id = $1 ORDER BY sort_order ASC', [companyId]) : [];
+    if (!sequences?.length) {
+      const companyRow = companyId ? await db.queryOne('SELECT name FROM companies WHERE id = $1', [companyId]) : null;
+      const companyName = companyRow?.name || `회사ID ${companyId}`;
+      return res.status(403).json({ error: `결재선이 설정되지 않았습니다. 문서 소속( ${companyName} )의 설정 → 결재순서에서 결재선을 추가해 주세요.` });
+    }
+    const history = await db.query('SELECT sequence FROM approval_history WHERE document_id = $1 ORDER BY sequence ASC', [req.params.id]);
+    const nextIdx = history.length;
+    if (nextIdx >= sequences.length) return res.status(400).json({ error: '모든 결재가 완료된 문서입니다.' });
+    const nextRole = sequences[nextIdx]?.role;
+    if (u.role !== nextRole) return res.status(403).json({ error: `현재 결재 권한이 없습니다. (${sequences.map(s => s.role)[nextIdx]} 역할이 결재할 차례입니다.)` });
+    const approverName = u.name || '결재자';
+    const nextSeq = (history.length ? Math.max(...history.map(h => h.sequence)) : 0) + 1;
+    const isLastStep = nextIdx + 1 >= sequences.length;
+    const newStatus = action === 'rejected' ? 'rejected' : (action === 'approved' && isLastStep ? 'approved' : 'pending');
+    await db.run('UPDATE expense_documents SET status=$1, updated_at=now() WHERE id=$2', [newStatus, req.params.id]);
+    await db.run('INSERT INTO approval_history (document_id, approver_name, sequence, action, comment) VALUES ($1, $2, $3, $4, $5)', [req.params.id, approverName, nextSeq, action, comment || null]);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -427,12 +648,18 @@ app.post('/api/documents/:id/approve', async (req, res) => {
 });
 
 app.get('/api/expenses', async (req, res) => {
-  const { from, to, project, account_item_id, account_item_name, user_name, description, limit, offset } = req.query;
+  const { from, to, project, account_item_id, account_item_name, user_name, description, company_id, limit, offset } = req.query;
   const parsed = require('url').parse(req.url || '', true);
   const status = (parsed.query && parsed.query.status) || req.query.status;
   try {
     const cond = [];
     const params = [];
+    let joinClause = 'FROM expense_items ei LEFT JOIN expense_documents ed ON ed.id = ei.document_id';
+    const companyIds = (company_id == null || company_id === '') && req.user?.id
+      ? await getCurrentUserCompanyIds(req.user.id)
+      : null;
+    const companyFilter = buildCompanyFilterJoin(company_id, companyIds, params);
+    if (companyFilter) { joinClause += companyFilter.join; cond.push(companyFilter.whereCond); }
     const validStatuses = ['draft', 'pending', 'approved', 'rejected'];
     const statusVal = typeof status === 'string' ? status.trim() : '';
     if (statusVal && validStatuses.includes(statusVal)) {
@@ -450,14 +677,13 @@ app.get('/api/expenses', async (req, res) => {
     if (description) { params.push(`%${description}%`); cond.push(`ei.description LIKE $${params.length}`); }
     const whereClause = cond.join(' AND ');
     const baseSql = `SELECT ei.id, ei.document_id, ei.use_date, ei.project_name, ei.account_item_id, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ed.status, ed.user_name
-      FROM expense_items ei
-      LEFT JOIN expense_documents ed ON ed.id = ei.document_id
+      ${joinClause}
       WHERE ${whereClause}`;
     let rowParams = [...params];
     let pageSql = baseSql + ' ORDER BY ei.use_date DESC, ei.id';
     if (limit != null) { rowParams.push(parseInt(limit, 10)); pageSql += ` LIMIT $${rowParams.length}`; }
     if (offset != null) { rowParams.push(parseInt(offset, 10)); pageSql += ` OFFSET $${rowParams.length}`; }
-    const countSql = `SELECT COUNT(*)::int as total FROM expense_items ei LEFT JOIN expense_documents ed ON ed.id = ei.document_id WHERE ${whereClause}`;
+    const countSql = `SELECT COUNT(*)::int as total ${joinClause} WHERE ${whereClause}`;
     const [countRes, rowsRes] = await Promise.all([
       db.query(countSql, params),
       db.query(pageSql, rowParams),
@@ -475,23 +701,27 @@ app.get('/api/expenses', async (req, res) => {
 });
 
 app.get('/api/dashboard/summary', async (req, res) => {
-  const { from, to, project } = req.query;
+  const { from, to, project, company_id } = req.query;
   try {
-    let where = "ed.status IN ('approved','pending')";
+    let joinClause = 'FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id';
     const params = [];
+    const companyIds = (company_id == null || company_id === '') && req.user?.id
+      ? await getCurrentUserCompanyIds(req.user.id)
+      : null;
+    const companyFilter = buildCompanyFilterJoin(company_id, companyIds, params);
+    if (companyFilter) { joinClause += companyFilter.join; }
+    let where = "ed.status IN ('approved','pending')";
+    if (companyFilter) where += ` AND ${companyFilter.whereCond}`;
     if (from) { params.push(from); where += ` AND ei.use_date >= $${params.length}`; }
     if (to) { params.push(to); where += ` AND ei.use_date <= $${params.length}`; }
     if (project) { params.push(project); where += ` AND ei.project_name = $${params.length}`; }
     const [byAccount, byProject, byMonth] = await Promise.all([
       db.query(`SELECT ei.account_item_id, ei.account_item_name, SUM(ei.total_amount)::bigint as total
-        FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
-        WHERE ${where} GROUP BY ei.account_item_id, ei.account_item_name ORDER BY total DESC`, params),
+        ${joinClause} WHERE ${where} GROUP BY ei.account_item_id, ei.account_item_name ORDER BY total DESC`, params),
       db.query(`SELECT ei.project_name, SUM(ei.total_amount)::bigint as total
-        FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
-        WHERE ${where} GROUP BY ei.project_name ORDER BY total DESC`, params),
+        ${joinClause} WHERE ${where} GROUP BY ei.project_name ORDER BY total DESC`, params),
       db.query(`SELECT to_char(ei.use_date::date, 'YYYY-MM') as month, SUM(ei.total_amount)::bigint as total
-        FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id
-        WHERE ${where} GROUP BY to_char(ei.use_date::date, 'YYYY-MM') ORDER BY month`, params),
+        ${joinClause} WHERE ${where} GROUP BY to_char(ei.use_date::date, 'YYYY-MM') ORDER BY month`, params),
     ]);
     res.json({ byAccount, byProject, byMonth });
   } catch (e) {
@@ -500,7 +730,7 @@ app.get('/api/dashboard/summary', async (req, res) => {
 });
 
 app.post('/api/import/csv', async (req, res) => {
-  const { rows, user_name, card_no, project_name: defaultProjectName } = req.body;
+  const { rows, user_name, card_no, project_name: defaultProjectName, company_id } = req.body;
   if (!rows?.length) return res.status(400).json({ error: 'No data' });
   if (!card_no || !String(card_no).trim()) return res.status(400).json({ error: '카드번호를 입력해 주세요.' });
   try {
@@ -516,7 +746,13 @@ app.post('/api/import/csv', async (req, res) => {
       const n = parseInt(v, 10);
       return Number.isNaN(n) ? null : n;
     };
-    const accountItems = await db.query('SELECT id, name FROM account_items');
+    let accountItemsSql = 'SELECT id, name FROM account_items';
+    const accountParams = [];
+    if (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10))) {
+      accountItemsSql += ' WHERE company_id = $1 OR company_id IS NULL';
+      accountParams.push(parseInt(company_id, 10));
+    }
+    const accountItems = await db.query(accountItemsSql, accountParams);
     const nameToId = {};
     accountItems.forEach(a => { nameToId[(a.name || '').trim()] = a.id; });
     const items = rows.map(r => {
@@ -541,11 +777,21 @@ app.post('/api/import/csv', async (req, res) => {
     const dates = items.map(i => i.use_date).sort();
     const totalCard = items.reduce((s, i) => s + i.card_amount, 0);
     const totalCash = items.reduce((s, i) => s + i.cash_amount, 0);
+    let docCompanyId = (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10))) ? parseInt(company_id, 10) : null;
+    if (!docCompanyId && user_name) {
+      const cu = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [user_name]);
+      docCompanyId = cu?.company_id;
+    }
+    if (!docCompanyId) {
+      const unnon = await db.queryOne("SELECT id FROM companies WHERE name = '언넌플랫폼' LIMIT 1");
+      docCompanyId = unnon?.id || (await db.queryOne('SELECT id FROM companies WHERE is_default = true'))?.id || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
+    }
+    if (!docCompanyId) return res.status(400).json({ error: '회사 정보를 확인할 수 없습니다.' });
     const docNo = `CARD-IMPORT-${Date.now()}`;
     const r = await db.run(`
-      INSERT INTO expense_documents (doc_no, user_name, project_name, period_start, period_end, card_no, status, total_card_amount, total_cash_amount)
-      VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, $8) RETURNING id
-    `, [docNo, user_name || 'import', project_name, dates[0], dates[dates.length - 1], card_no || null, totalCard, totalCash]);
+      INSERT INTO expense_documents (doc_no, user_name, project_name, period_start, period_end, card_no, status, total_card_amount, total_cash_amount, company_id)
+      VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, $8, $9) RETURNING id
+    `, [docNo, user_name || 'import', project_name, dates[0], dates[dates.length - 1], card_no || null, totalCard, totalCash, docCompanyId]);
     const docId = r.rows[0].id;
     const csvItems = items.map(i => {
       const card = safeInt(i.card_amount);
@@ -565,11 +811,17 @@ function nameToCode(name) {
 }
 
 app.post('/api/projects', async (req, res) => {
-  const { name } = req.body;
+  if (!req.user) return res.status(401).json({ error: '로그인이 필요합니다.' });
+  const { name, company_id } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
   try {
     const code = nameToCode(name.trim()) || null;
-    const r = await db.run('INSERT INTO projects (code, name) VALUES ($1, $2) RETURNING id', [code, name.trim()]);
+    const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
+    if (cid != null) {
+      const belongs = await userBelongsToCompany(req.user.id, cid);
+      if (!belongs) return res.status(403).json({ error: '소속 회사에만 현장을 추가할 수 있습니다.' });
+    }
+    const r = await db.run('INSERT INTO projects (code, name, company_id) VALUES ($1, $2, $3) RETURNING id', [code, name.trim(), cid]);
     res.json({ id: r.rows[0].id });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -577,11 +829,17 @@ app.post('/api/projects', async (req, res) => {
 });
 
 app.post('/api/account-items', async (req, res) => {
-  const { name } = req.body;
+  if (!req.user) return res.status(401).json({ error: '로그인이 필요합니다.' });
+  const { name, company_id } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
   try {
     const code = nameToCode(name.trim()) || `item_${Date.now()}`;
-    const r = await db.run('INSERT INTO account_items (code, name) VALUES ($1, $2) RETURNING id', [code, name.trim()]);
+    const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
+    if (cid != null) {
+      const belongs = await userBelongsToCompany(req.user.id, cid);
+      if (!belongs) return res.status(403).json({ error: '소속 회사에만 계정과목을 추가할 수 있습니다.' });
+    }
+    const r = await db.run('INSERT INTO account_items (code, name, company_id) VALUES ($1, $2, $3) RETURNING id', [code, name.trim(), cid]);
     res.json({ id: r.rows[0].id });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -589,11 +847,18 @@ app.post('/api/account-items', async (req, res) => {
 });
 
 app.put('/api/account-items/:id', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: '로그인이 필요합니다.' });
   const id = parseInt(req.params.id, 10);
   const { name } = req.body;
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
   try {
+    const row = await db.queryOne('SELECT company_id FROM account_items WHERE id = $1', [id]);
+    if (!row) return res.status(404).json({ error: '항목을 찾을 수 없습니다.' });
+    if (row.company_id != null) {
+      const belongs = await userBelongsToCompany(req.user.id, row.company_id);
+      if (!belongs) return res.status(403).json({ error: '소속 회사의 항목만 수정할 수 있습니다.' });
+    }
     const code = nameToCode(name.trim()) || null;
     await db.run('UPDATE account_items SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
     await db.run('UPDATE expense_items SET account_item_name=$1 WHERE account_item_id=$2', [name.trim(), id]);
@@ -604,11 +869,18 @@ app.put('/api/account-items/:id', async (req, res) => {
 });
 
 app.put('/api/projects/:id', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: '로그인이 필요합니다.' });
   const id = parseInt(req.params.id, 10);
   const { name } = req.body;
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
   try {
+    const row = await db.queryOne('SELECT company_id FROM projects WHERE id = $1', [id]);
+    if (!row) return res.status(404).json({ error: '현장을 찾을 수 없습니다.' });
+    if (row.company_id != null) {
+      const belongs = await userBelongsToCompany(req.user.id, row.company_id);
+      if (!belongs) return res.status(403).json({ error: '소속 회사의 현장만 수정할 수 있습니다.' });
+    }
     const code = nameToCode(name.trim()) || null;
     await db.run('UPDATE projects SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
     await db.run('UPDATE expense_items SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
@@ -620,27 +892,67 @@ app.put('/api/projects/:id', async (req, res) => {
 });
 
 app.delete('/api/account-items/:id', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: '로그인이 필요합니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
+    const row = await db.queryOne('SELECT company_id FROM account_items WHERE id = $1', [id]);
+    if (!row) return res.status(404).json({ error: '항목을 찾을 수 없습니다.' });
+    if (row.company_id != null) {
+      const belongs = await userBelongsToCompany(req.user.id, row.company_id);
+      if (!belongs) return res.status(403).json({ error: '소속 회사의 항목만 삭제할 수 있습니다.' });
+    }
+    const itemCompanyId = row.company_id;
+    const usedInCompany = itemCompanyId != null
+      ? await db.queryOne(
+          'SELECT 1 FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id WHERE ei.account_item_id = $1 AND ed.company_id = $2 LIMIT 1',
+          [id, itemCompanyId]
+        )
+      : await db.queryOne(
+          'SELECT 1 FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id WHERE ei.account_item_id = $1 AND ed.company_id IS NULL LIMIT 1',
+          [id]
+        );
+    if (usedInCompany) {
+      return res.status(400).json({ error: '해당 회사에서 사용 중인 계정과목은 삭제할 수 없습니다.' });
+    }
     const r = await db.run('DELETE FROM account_items WHERE id = $1', [id]);
     if (!r.rowCount) return res.status(404).json({ error: '항목을 찾을 수 없습니다.' });
     res.json({ ok: true });
   } catch (e) {
-    if (e.code === '23503') return res.status(400).json({ error: '사용 중인 항목은 삭제할 수 없습니다.' });
+    if (e.code === '23503') return res.status(400).json({ error: '다른 회사 문서에서 잘못된 참조가 있습니다. 해당 문서의 계정과목을 해당 회사 계정과목으로 수정한 후 삭제하세요.' });
     res.status(500).json({ error: e.message });
   }
 });
 
 app.delete('/api/projects/:id', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: '로그인이 필요합니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
+    const row = await db.queryOne('SELECT id, company_id FROM projects WHERE id = $1', [id]);
+    if (!row) return res.status(404).json({ error: '현장을 찾을 수 없습니다.' });
+    if (row.company_id != null) {
+      const belongs = await userBelongsToCompany(req.user.id, row.company_id);
+      if (!belongs) return res.status(403).json({ error: '소속 회사의 현장만 삭제할 수 있습니다.' });
+    }
+    const projectCompanyId = row.company_id;
+    const usedInCompany = projectCompanyId != null
+      ? await db.queryOne(
+          'SELECT 1 FROM expense_documents WHERE project_id = $1 AND company_id = $2 LIMIT 1',
+          [id, projectCompanyId]
+        )
+      : await db.queryOne(
+          'SELECT 1 FROM expense_documents ed WHERE project_id = $1 AND (ed.company_id IS NULL) LIMIT 1',
+          [id]
+        );
+    if (usedInCompany) {
+      return res.status(400).json({ error: '해당 회사에서 사용 중인 현장은 삭제할 수 없습니다.' });
+    }
     const r = await db.run('DELETE FROM projects WHERE id = $1', [id]);
     if (!r.rowCount) return res.status(404).json({ error: '현장을 찾을 수 없습니다.' });
     res.json({ ok: true });
   } catch (e) {
-    if (e.code === '23503') return res.status(400).json({ error: '사용 중인 현장은 삭제할 수 없습니다.' });
+    if (e.code === '23503') return res.status(400).json({ error: '다른 회사 문서에서 잘못된 참조가 있습니다. 해당 문서의 현장을 해당 회사 현장으로 수정한 후 삭제하세요.' });
     res.status(500).json({ error: e.message });
   }
 });
@@ -649,8 +961,20 @@ app.delete('/api/projects/:id', async (req, res) => {
 app.get('/api/user-cards', async (req, res) => {
   const user_name = req.query.user_name;
   const all = req.query.all === '1' || req.query.all === 'true';
+  const company_id = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
+    ? parseInt(req.query.company_id, 10)
+    : null;
   if (all && req.user && (req.user.is_admin || req.user.role === 'admin')) {
     try {
+      if (company_id != null) {
+        const rows = await db.query(`
+          SELECT uc.id, uc.user_name, uc.card_no, uc.label, uc.is_default
+          FROM user_cards uc
+          WHERE uc.company_id = $1 OR uc.company_id IS NULL
+          ORDER BY uc.user_name, uc.is_default DESC, uc.id
+        `, [company_id]);
+        return res.json(rows);
+      }
       const rows = await db.query('SELECT id, user_name, card_no, label, is_default FROM user_cards ORDER BY user_name, is_default DESC, id');
       return res.json(rows);
     } catch (e) {
@@ -659,7 +983,14 @@ app.get('/api/user-cards', async (req, res) => {
   }
   if (!user_name?.trim()) return res.json([]);
   try {
-    const rows = await db.query('SELECT id, user_name, card_no, label, is_default FROM user_cards WHERE user_name = $1 ORDER BY is_default DESC, id', [user_name.trim()]);
+    let sql = 'SELECT id, user_name, card_no, label, is_default FROM user_cards WHERE user_name = $1';
+    const params = [user_name.trim()];
+    if (company_id != null) {
+      sql += ' AND (company_id = $2 OR company_id IS NULL)';
+      params.push(company_id);
+    }
+    sql += ' ORDER BY is_default DESC, id';
+    const rows = await db.query(sql, params);
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -667,15 +998,24 @@ app.get('/api/user-cards', async (req, res) => {
 });
 
 app.post('/api/user-cards', async (req, res) => {
-  const { user_name, card_no, label, is_default } = req.body;
+  const { user_name, card_no, label, is_default, company_id } = req.body;
   if (!user_name?.trim() || !card_no?.trim()) return res.status(400).json({ error: '사용자명과 카드번호 필수' });
   try {
+    let cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
+    if (!cid && req.user?.id) {
+      const au = await db.queryOne('SELECT company_id FROM auth_users WHERE name = $1 LIMIT 1', [user_name.trim()]);
+      cid = au?.company_id ?? null;
+    }
+    if (!cid) {
+      const def = await db.queryOne('SELECT id FROM companies WHERE is_default = true');
+      cid = def?.id ?? null;
+    }
     if (is_default) {
       await db.run('UPDATE user_cards SET is_default = false WHERE user_name = $1', [user_name.trim()]);
     }
     const r = await db.run(
-      'INSERT INTO user_cards (user_name, card_no, label, is_default) VALUES ($1, $2, $3, $4) RETURNING id, user_name, card_no, label, is_default',
-      [user_name.trim(), (card_no || '').trim(), (label || '').trim() || null, !!is_default]
+      'INSERT INTO user_cards (company_id, user_name, card_no, label, is_default) VALUES ($1, $2, $3, $4, $5) RETURNING id, user_name, card_no, label, is_default',
+      [cid, user_name.trim(), (card_no || '').trim(), (label || '').trim() || null, !!is_default]
     );
     res.json(r.rows[0]);
   } catch (e) {
@@ -719,6 +1059,199 @@ app.delete('/api/user-cards/:id', async (req, res) => {
   }
 });
 
+// 법인카드 마스터 (회사별)
+app.get('/api/corporate-cards', async (req, res) => {
+  const company_id = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
+    ? parseInt(req.query.company_id, 10)
+    : null;
+  try {
+    let sql = 'SELECT cc.id, cc.company_id, cc.card_no, cc.label, cc.created_at FROM corporate_cards cc';
+    const params = [];
+    if (company_id != null) {
+      sql += ' WHERE cc.company_id = $1';
+      params.push(company_id);
+    }
+    sql += ' ORDER BY cc.company_id, cc.card_no';
+    const rows = await db.query(sql, params);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/corporate-cards', async (req, res) => {
+  const { company_id, card_no, label } = req.body;
+  if (!company_id || isNaN(parseInt(company_id, 10)) || !card_no?.trim()) {
+    return res.status(400).json({ error: '회사와 카드번호 필수' });
+  }
+  const cid = parseInt(company_id, 10);
+  try {
+    const r = await db.run(
+      'INSERT INTO corporate_cards (company_id, card_no, label) VALUES ($1, $2, $3) RETURNING id, company_id, card_no, label, created_at',
+      [cid, (card_no || '').trim(), (label || '').trim() || null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: '동일 회사에 같은 카드번호가 이미 등록되어 있습니다.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/corporate-cards/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { card_no, label } = req.body;
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const updates = [];
+    const params = [];
+    let idx = 1;
+    if (card_no !== undefined) { params.push((card_no || '').trim()); updates.push(`card_no = $${idx++}`); }
+    if (label !== undefined) { params.push((label || '').trim() || null); updates.push(`label = $${idx++}`); }
+    if (updates.length === 0) return res.status(400).json({ error: '수정할 필드 없음' });
+    params.push(id);
+    await db.run(
+      `UPDATE corporate_cards SET ${updates.join(', ')} WHERE id = $${idx}`,
+      params
+    );
+    const row = await db.queryOne('SELECT id, company_id, card_no, label, created_at FROM corporate_cards WHERE id = $1', [id]);
+    if (!row) return res.status(404).json({ error: '법인카드를 찾을 수 없습니다.' });
+    res.json(row);
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: '동일 회사에 같은 카드번호가 이미 등록되어 있습니다.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/corporate-cards/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const r = await db.run('DELETE FROM corporate_cards WHERE id = $1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: '법인카드를 찾을 수 없습니다.' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 슈퍼관리자용 마스터 템플릿 (신규 회사 생성 시 마이그레이션용)
+app.get('/api/admin/master-templates/account-items', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  try {
+    const rows = await db.query('SELECT id, code, name, display_order FROM master_templates_account_items ORDER BY display_order, id');
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get('/api/admin/master-templates/projects', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  try {
+    const rows = await db.query('SELECT id, code, name FROM master_templates_projects ORDER BY name');
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/admin/master-templates/account-items', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
+  try {
+    const code = nameToCode(name.trim()) || `tpl_item_${Date.now()}`;
+    const r = await db.run(
+      'INSERT INTO master_templates_account_items (code, name, display_order) VALUES ($1, $2, 99) RETURNING id, code, name, display_order',
+      [code, name.trim()]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put('/api/admin/master-templates/account-items/:id', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  const id = parseInt(req.params.id, 10);
+  const { name } = req.body;
+  if (!id || isNaN(id) || !name?.trim()) return res.status(400).json({ error: 'ID 및 항목명 필수' });
+  try {
+    const code = nameToCode(name.trim()) || null;
+    await db.run('UPDATE master_templates_account_items SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
+    const row = await db.queryOne('SELECT id, code, name FROM master_templates_account_items WHERE id = $1', [id]);
+    res.json(row || { id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.delete('/api/admin/master-templates/account-items/:id', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const r = await db.run('DELETE FROM master_templates_account_items WHERE id = $1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: '항목을 찾을 수 없습니다.' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/admin/master-templates/projects', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
+  try {
+    const code = nameToCode(name.trim()) || null;
+    const r = await db.run(
+      'INSERT INTO master_templates_projects (code, name) VALUES ($1, $2) RETURNING id, code, name',
+      [code, name.trim()]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put('/api/admin/master-templates/projects/:id', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  const id = parseInt(req.params.id, 10);
+  const { name } = req.body;
+  if (!id || isNaN(id) || !name?.trim()) return res.status(400).json({ error: 'ID 및 현장명 필수' });
+  try {
+    const code = nameToCode(name.trim()) || null;
+    await db.run('UPDATE master_templates_projects SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
+    const row = await db.queryOne('SELECT id, code, name FROM master_templates_projects WHERE id = $1', [id]);
+    res.json(row || { id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.delete('/api/admin/master-templates/projects/:id', async (req, res) => {
+  if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
+  const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const r = await db.run('DELETE FROM master_templates_projects WHERE id = $1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: '현장을 찾을 수 없습니다.' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 사용자별 기본 설정 (기본 현장)
 app.get('/api/user-settings', async (req, res) => {
   const user_name = req.query.user_name;
@@ -749,6 +1282,74 @@ app.put('/api/user-settings', async (req, res) => {
 
 const adminCache = new Map(); // userId -> { isAdmin, cachedAt }
 const ADMIN_CACHE_TTL_MS = 60 * 1000;
+
+/** 동일 이메일의 모든 auth_users 소속 회사 ID 조회 (이메일 회사별 허용 시 1인 다회사 지원) */
+async function getCompanyIdsForUserIncludingSameEmail(userId) {
+  if (!userId) return [];
+  const rows = await db.query(
+    `SELECT company_id FROM auth_user_companies
+     WHERE user_id IN (SELECT id FROM auth_users WHERE LOWER(TRIM(email)) = (SELECT LOWER(TRIM(email)) FROM auth_users WHERE id = $1 LIMIT 1))
+     UNION
+     SELECT company_id FROM auth_users
+     WHERE LOWER(TRIM(email)) = (SELECT LOWER(TRIM(email)) FROM auth_users WHERE id = $1 LIMIT 1) AND company_id IS NOT NULL`,
+    [userId]
+  );
+  return [...new Set((rows || []).map(r => r.company_id).filter(Boolean))];
+}
+
+/** 모든 사용자: 소속 회사만 조회 (동일 이메일 다회사 계정 포함) */
+async function getCompaniesForUser(user) {
+  if (!user?.id) return [];
+  const ids = await getCompanyIdsForUserIncludingSameEmail(user.id);
+  if (ids.length === 0) return [];
+  return db.query(
+    `SELECT c.id, c.name, c.is_default FROM companies c WHERE c.id = ANY($1::int[]) ORDER BY c.id`,
+    [ids]
+  );
+}
+
+/** 사용자 소속 회사 여부 (동일 이메일 다회사 계정 포함) */
+async function userBelongsToCompany(userId, companyId) {
+  if (!userId || !companyId) return false;
+  const ids = await getCompanyIdsForUserIncludingSameEmail(userId);
+  return ids.includes(parseInt(companyId, 10));
+}
+
+/** 현재 사용자 소속 회사 ID 배열 (동일 이메일 다회사 계정 포함) */
+async function getCurrentUserCompanyIds(userId) {
+  return getCompanyIdsForUserIncludingSameEmail(userId);
+}
+
+/** document/expense 조회 시 회사 필터: { join, whereCond } (ed.company_id 우선, 없으면 auth_users 기준) */
+function buildCompanyFilterJoin(companyId, companyIds, params) {
+  if (companyId != null && companyId !== '' && !isNaN(parseInt(companyId, 10))) {
+    params.push(parseInt(companyId, 10));
+    const p = params.length;
+    return {
+      join: ' LEFT JOIN auth_users au ON au.name = ed.user_name',
+      whereCond: `(ed.company_id = $${p} OR (ed.company_id IS NULL AND (au.company_id = $${p} OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $${p}))))`,
+    };
+  }
+  if (companyIds && companyIds.length > 0) {
+    params.push(companyIds);
+    const p = params.length;
+    return {
+      join: ' LEFT JOIN auth_users au ON au.name = ed.user_name',
+      whereCond: `(ed.company_id = ANY($${p}::int[]) OR (ed.company_id IS NULL AND (au.company_id = ANY($${p}::int[]) OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = ANY($${p}::int[])))))`,
+    };
+  }
+  return null;
+}
+
+/** 사용자 대표회사 (top/bottom 연동용): auth_users.company_id 또는 소속 첫 회사 (동일 이메일 다회사 포함) */
+async function getUserRepresentativeCompany(userId) {
+  if (!userId) return null;
+  const user = await db.queryOne('SELECT company_id FROM auth_users WHERE id = $1', [userId]);
+  const repId = user?.company_id;
+  const ids = await getCompanyIdsForUserIncludingSameEmail(userId);
+  if (repId && ids.includes(repId)) return repId;
+  return ids[0] || null;
+}
 
 const requireAdmin = async (req, res, next) => {
   if (!req.user?.id) {
@@ -830,17 +1431,22 @@ app.delete('/api/admin/roles/:id', requireAdmin, async (req, res) => {
 app.get('/api/admin/companies', requireAdmin, async (req, res) => {
   try {
     const withSettings = req.query.with_settings === '1' || req.query.with_settings === 'true';
-    const [rows, settingsRow] = await Promise.all([
-      db.query('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text, is_default FROM companies ORDER BY is_default DESC, id'),
-      withSettings ? db.queryOne(`
-        SELECT auto_approve FROM company_settings
-        WHERE company_id = COALESCE(
-          (SELECT id FROM companies WHERE is_default = true LIMIT 1),
-          (SELECT id FROM companies ORDER BY id LIMIT 1)
-        )
-        LIMIT 1
-      `) : Promise.resolve(null),
-    ]);
+    const companyIds = await getCompanyIdsForUserIncludingSameEmail(req.user.id);
+    if (companyIds.length === 0) {
+      const result = withSettings ? { companies: [], auto_approve: false } : [];
+      return res.json(result);
+    }
+    const companySql = `
+      SELECT c.id, c.name, c.logo_url, c.address, c.ceo_name, c.founded_date, c.business_reg_no, c.tel, c.fax, c.email, c.copyright_text, c.is_default
+      FROM companies c
+      WHERE c.id = ANY($1::int[])
+      ORDER BY c.id
+    `;
+    const rows = await db.query(companySql, [companyIds]);
+    const firstCompanyId = rows?.[0]?.id;
+    const settingsRow = withSettings && firstCompanyId
+      ? await db.queryOne('SELECT auto_approve FROM company_settings WHERE company_id = $1 LIMIT 1', [firstCompanyId])
+      : null;
     if (withSettings) {
       res.json({ companies: rows, auto_approve: settingsRow?.auto_approve ?? false });
     } else {
@@ -851,7 +1457,105 @@ app.get('/api/admin/companies', requireAdmin, async (req, res) => {
   }
 });
 
+/** 슈퍼관리자 전용: 회사 + 관리자 사용자 일괄 등록 */
+app.post('/api/admin/super/company-with-admin', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
+  const { name: companyName, email, userName, password } = req.body;
+  if (!companyName?.trim()) return res.status(400).json({ error: '회사명을 입력하세요.' });
+  if (!email?.trim()) return res.status(400).json({ error: '관리자 이메일을 입력하세요.' });
+  const pw = password && String(password).length >= 4 ? password : null;
+  if (!pw) return res.status(400).json({ error: '관리자 비밀번호를 4자 이상 입력하세요.' });
+  try {
+    const companyNameTrim = companyName.trim();
+    const existingCompany = await db.queryOne('SELECT id FROM companies WHERE TRIM(name) = $1', [companyNameTrim]);
+    if (existingCompany) return res.status(400).json({ error: '이미 등록된 회사명입니다. 다른 회사명을 사용하세요.' });
+
+    const rows = await db.query('SELECT id FROM companies');
+    const isFirst = rows.length === 0;
+    const cr = await db.run(
+      `INSERT INTO companies (name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text, is_default)
+       VALUES ($1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $2) RETURNING id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text, is_default, created_at`,
+      [companyNameTrim, isFirst]
+    );
+    const newCompanyId = cr.rows[0].id;
+    const [tplAccounts, tplProjects] = await Promise.all([
+      db.query('SELECT code, name, display_order FROM master_templates_account_items ORDER BY display_order, id'),
+      db.query('SELECT code, name FROM master_templates_projects ORDER BY id'),
+    ]);
+    if (tplAccounts?.length) {
+      for (const t of tplAccounts) {
+        await db.run(
+          'INSERT INTO account_items (company_id, code, name, display_order) VALUES ($1, $2, $3, $4)',
+          [newCompanyId, t.code, t.name, t.display_order ?? 0]
+        );
+      }
+    }
+    if (tplProjects?.length) {
+      for (const t of tplProjects) {
+        await db.run(
+          'INSERT INTO projects (company_id, code, name) VALUES ($1, $2, $3)',
+          [newCompanyId, t.code || null, t.name]
+        );
+      }
+    }
+    const hash = await auth.hashPassword(pw);
+    const ur = await db.run(
+      `INSERT INTO auth_users (company_id, email, password_hash, name, role, is_admin, is_approved)
+       VALUES ($1, $2, $3, $4, 'admin', false, true) RETURNING id, email, name, role`,
+      [newCompanyId, email.trim(), hash, (userName || '').trim() || (email || '').split('@')[0]]
+    );
+    await db.run('INSERT INTO auth_user_companies (user_id, company_id) VALUES ($1, $2) ON CONFLICT (user_id, company_id) DO NOTHING', [ur.rows[0].id, newCompanyId]);
+    res.json({ company: cr.rows[0], user: ur.rows[0] });
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: '이미 등록된 회사명이거나 동일 회사에 이미 등록된 이메일입니다.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** 슈퍼관리자 전용: 회사 목록 (페이징, 전체 필드, 조회조건) */
+app.get('/api/admin/super/companies-page', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
+  const ceo_name = typeof req.query.ceo_name === 'string' ? req.query.ceo_name.trim() : '';
+  const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+  try {
+    const cond = [];
+    const params = [];
+    let pIdx = 1;
+    if (name) {
+      params.push(`%${name}%`);
+      cond.push(`name ILIKE $${pIdx++}`);
+    }
+    if (ceo_name) {
+      params.push(`%${ceo_name}%`);
+      cond.push(`ceo_name ILIKE $${pIdx++}`);
+    }
+    if (email) {
+      params.push(`%${email}%`);
+      cond.push(`email ILIKE $${pIdx++}`);
+    }
+    const whereClause = cond.length ? ' WHERE ' + cond.join(' AND ') : '';
+    const countRes = await db.queryOne(
+      `SELECT COUNT(*)::int as total FROM companies${whereClause}`,
+      params
+    );
+    const total = countRes?.total ?? 0;
+    params.push(limit, offset);
+    const rows = await db.query(
+      `SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text, is_default, created_at
+       FROM companies${whereClause} ORDER BY is_default DESC, id LIMIT $${pIdx++} OFFSET $${pIdx}`,
+      params
+    );
+    res.json({ rows: rows || [], total });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/admin/companies', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '회사 추가는 슈퍼관리자만 가능합니다.' });
   const { name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '회사명 필수' });
   try {
@@ -863,6 +1567,27 @@ app.post('/api/admin/companies', requireAdmin, async (req, res) => {
       [name.trim(), logo_url || null, address?.trim() || null, ceo_name?.trim() || null, founded_date?.trim() || null,
        business_reg_no?.trim() || null, tel?.trim() || null, fax?.trim() || null, email?.trim() || null, copyright_text?.trim() || null, isFirst]
     );
+    const newCompanyId = r.rows[0].id;
+    const [tplAccounts, tplProjects] = await Promise.all([
+      db.query('SELECT code, name, display_order FROM master_templates_account_items ORDER BY display_order, id'),
+      db.query('SELECT code, name FROM master_templates_projects ORDER BY id'),
+    ]);
+    if (tplAccounts?.length) {
+      for (const t of tplAccounts) {
+        await db.run(
+          'INSERT INTO account_items (company_id, code, name, display_order) VALUES ($1, $2, $3, $4)',
+          [newCompanyId, t.code, t.name, t.display_order ?? 0]
+        );
+      }
+    }
+    if (tplProjects?.length) {
+      for (const t of tplProjects) {
+        await db.run(
+          'INSERT INTO projects (company_id, code, name) VALUES ($1, $2, $3)',
+          [newCompanyId, t.code || null, t.name]
+        );
+      }
+    }
     res.json(r.rows[0]);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -870,6 +1595,7 @@ app.post('/api/admin/companies', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/admin/companies/:id/set-default', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '대표 회사 설정은 슈퍼관리자만 가능합니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
@@ -888,6 +1614,8 @@ app.put('/api/companies/:id', requireAdmin, async (req, res) => {
   const { name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text } = req.body;
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
+    const belongs = await userBelongsToCompany(req.user.id, id);
+    if (!belongs) return res.status(403).json({ error: '소속 회사만 수정할 수 있습니다.' });
     await db.run(
       `UPDATE companies SET name = COALESCE($1, name), logo_url = $2, address = $3, ceo_name = $4, founded_date = $5,
        business_reg_no = $6, tel = $7, fax = $8, email = $9, copyright_text = $10 WHERE id = $11`,
@@ -903,15 +1631,35 @@ app.put('/api/companies/:id', requireAdmin, async (req, res) => {
 });
 
 app.delete('/api/admin/companies/:id', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '회사 삭제는 슈퍼관리자만 가능합니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
     const users = await db.query('SELECT id FROM auth_users WHERE company_id = $1', [id]);
     if (users.length > 0) return res.status(400).json({ error: `해당 회사 소속 사용자 ${users.length}명이 있어 삭제할 수 없습니다.` });
+    const auc = await db.query('SELECT 1 FROM auth_user_companies WHERE company_id = $1 LIMIT 1', [id]);
+    if (auc.length > 0) return res.status(400).json({ error: '해당 회사에 소속된 사용자가 있어 삭제할 수 없습니다. 먼저 사용자-회사 연결을 해제하세요.' });
     const def = await db.queryOne('SELECT id FROM companies WHERE is_default = true');
     if (def?.id === id) return res.status(400).json({ error: '대표 회사는 삭제할 수 없습니다. 다른 회사를 대표로 설정 후 삭제하세요.' });
+
+    const projIds = (await db.query('SELECT id FROM projects WHERE company_id = $1', [id])).map((r) => r.id);
+    if (projIds.length > 0) {
+      const placeholders = projIds.map((_, i) => `$${i + 1}`).join(',');
+      await db.run(`DELETE FROM admin_edit_history WHERE document_id IN (SELECT id FROM expense_documents WHERE project_id IN (${placeholders}))`, projIds);
+      await db.run(`DELETE FROM approval_history WHERE document_id IN (SELECT id FROM expense_documents WHERE project_id IN (${placeholders}))`, projIds);
+      await db.run(`DELETE FROM expense_documents WHERE project_id IN (${placeholders})`, projIds);
+      await db.run(`UPDATE user_settings SET default_project_id = NULL WHERE default_project_id IN (${placeholders})`, projIds);
+      await db.run(`UPDATE auth_users SET project_id = NULL WHERE project_id IN (${placeholders})`, projIds);
+    }
+    await db.run('DELETE FROM role_menus WHERE company_id = $1', [id]);
+    await db.run('DELETE FROM auth_user_companies WHERE company_id = $1', [id]);
     await db.run('DELETE FROM approval_sequences WHERE company_id = $1', [id]);
     await db.run('DELETE FROM company_settings WHERE company_id = $1', [id]);
+    await db.run('DELETE FROM corporate_cards WHERE company_id = $1', [id]);
+    await db.run('DELETE FROM user_cards WHERE company_id = $1', [id]);
+    await db.run('DELETE FROM account_mapping_rules WHERE account_item_id IN (SELECT id FROM account_items WHERE company_id = $1)', [id]);
+    await db.run('DELETE FROM account_items WHERE company_id = $1', [id]);
+    await db.run('DELETE FROM projects WHERE company_id = $1', [id]);
     await db.run('DELETE FROM companies WHERE id = $1', [id]);
     res.json({ ok: true });
   } catch (e) {
@@ -927,7 +1675,8 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
     let idx = 1;
     if (company_id != null && company_id !== '') {
       params.push(parseInt(company_id, 10));
-      conditions.push(`au.company_id = $${idx++}`);
+      conditions.push(`(au.company_id = $${idx} OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $${idx}))`);
+      idx++;
     }
     if (project_id != null && project_id !== '') {
       params.push(parseInt(project_id, 10));
@@ -966,19 +1715,36 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const { email, password, name, role, company_id, project_id, is_approved } = req.body;
-  if (!email?.trim() || !password) return res.status(400).json({ error: '이메일과 비밀번호 필수' });
+  if (!email?.trim()) return res.status(400).json({ error: '이메일 필수' });
+  const cid = (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10)))
+    ? parseInt(company_id, 10) : null;
   try {
+    const em = String(email || '').trim();
+    const existing = await db.queryOne('SELECT id, company_id FROM auth_users WHERE LOWER(TRIM(email)) = LOWER($1)', [em]);
+    if (existing) {
+      if (!cid) return res.status(400).json({ error: '이미 등록된 이메일입니다. 다른 회사에 추가하려면 회사를 선택하세요.' });
+      const hasMain = (existing.company_id != null && parseInt(existing.company_id, 10) === cid);
+      const hasAuc = await db.queryOne('SELECT 1 FROM auth_user_companies WHERE user_id = $1 AND company_id = $2', [existing.id, cid]);
+      if (hasMain || hasAuc) return res.status(400).json({ error: '해당 회사에 이미 등록된 이메일입니다.' });
+      await db.run('INSERT INTO auth_user_companies (user_id, company_id) VALUES ($1, $2) ON CONFLICT (user_id, company_id) DO NOTHING', [existing.id, cid]);
+      const row = await db.queryOne('SELECT au.id, au.email, au.name, au.role FROM auth_users au WHERE au.id = $1', [existing.id]);
+      return res.json(row);
+    }
+    if (!password) return res.status(400).json({ error: '신규 등록 시 비밀번호 필수' });
     const hash = await auth.hashPassword(password);
     const newRole = role || 'author';
     const isAdminRole = newRole === 'admin';
     const r = await db.run(
       `INSERT INTO auth_users (company_id, project_id, email, password_hash, name, role, is_admin, is_approved)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, email, name, role`,
-      [company_id || null, project_id ? parseInt(project_id, 10) : null, email.trim(), hash, (name || '').trim() || email.split('@')[0], newRole, isAdminRole, !!is_approved]
+      [cid, project_id ? parseInt(project_id, 10) : null, email.trim(), hash, (name || '').trim() || email.split('@')[0], newRole, isAdminRole, !!is_approved]
     );
+    if (cid) {
+      await db.run('INSERT INTO auth_user_companies (user_id, company_id) VALUES ($1, $2) ON CONFLICT (user_id, company_id) DO NOTHING', [r.rows[0].id, cid]);
+    }
     res.json(r.rows[0]);
   } catch (e) {
-    if (e.code === '23505') return res.status(400).json({ error: '이미 등록된 이메일입니다.' });
+    if (e.code === '23505') return res.status(400).json({ error: '이미 등록된 이메일입니다. 다른 회사에 추가하려면 회사를 선택한 후 추가하세요.' });
     res.status(500).json({ error: e.message });
   }
 });
@@ -1030,9 +1796,29 @@ app.post('/api/admin/users/:id/approve', requireAdmin, async (req, res) => {
   }
 });
 
+/** 해당 회사에서 role_menus에 설정된 역할만 반환 */
+app.get('/api/admin/roles-by-company', requireAdmin, async (req, res) => {
+  try {
+    const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
+      ? parseInt(req.query.company_id, 10) : null;
+    if (!cid) return res.json([]);
+    const rows = await db.query(`
+      SELECT DISTINCT r.id, r.code, r.label, r.display_order FROM roles r
+      INNER JOIN role_menus rm ON rm.role = r.code AND rm.company_id = $1
+      ORDER BY r.display_order, r.id
+    `, [cid]);
+    res.json(rows || []);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/admin/role-menus', requireAdmin, async (req, res) => {
   try {
-    const rows = await db.query('SELECT role, menu_path FROM role_menus ORDER BY role, menu_path');
+    const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
+      ? parseInt(req.query.company_id, 10) : null;
+    if (!cid) return res.status(400).json({ error: '회사 선택 필수' });
+    const rows = await db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [cid]);
     const byRole = {};
     rows.forEach(r => {
       if (!byRole[r.role]) byRole[r.role] = [];
@@ -1045,14 +1831,20 @@ app.get('/api/admin/role-menus', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/admin/role-menus', requireAdmin, async (req, res) => {
-  const { role, menus } = req.body;
+  const { role, menus, company_id } = req.body;
   if (!role) return res.status(400).json({ error: 'role 필수' });
+  const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
+  if (!cid) return res.status(400).json({ error: '회사 선택 필수' });
+  if (role === 'company_admin') {
+    const u = await db.queryOne('SELECT is_admin FROM auth_users WHERE id = $1', [req.user?.id]);
+    if (!u?.is_admin) return res.status(403).json({ error: '회사별 관리자 메뉴는 슈퍼관리자만 수정할 수 있습니다.' });
+  }
   try {
-    await db.run('DELETE FROM role_menus WHERE role = $1', [role]);
+    await db.run('DELETE FROM role_menus WHERE company_id = $1 AND role = $2', [cid, role]);
     for (const m of (menus || [])) {
-      if (m?.trim()) await db.run('INSERT INTO role_menus (role, menu_path) VALUES ($1, $2)', [role, m.trim()]);
+      if (m?.trim()) await db.run('INSERT INTO role_menus (company_id, role, menu_path) VALUES ($1, $2, $3)', [cid, role, m.trim()]);
     }
-    const rows = await db.query('SELECT menu_path FROM role_menus WHERE role = $1', [role]);
+    const rows = await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [cid, role]);
     res.json(rows.map(r => r.menu_path));
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1070,18 +1862,27 @@ app.get('/api/admin/approval-sequences', requireAdmin, async (req, res) => {
 
 app.get('/api/admin/batch/approval-sequence', requireAdmin, async (req, res) => {
   try {
-    const [seqRows, companyRow, rolesData] = await Promise.all([
+    const companyIdParam = req.query.company_id != null && req.query.company_id !== ''
+      ? parseInt(req.query.company_id, 10)
+      : null;
+    const cidParam = companyIdParam || null;
+    const [seqRows, companies, defaultCompany, rolesData] = await Promise.all([
       db.query('SELECT id, company_id, role, sort_order FROM approval_sequences ORDER BY company_id, sort_order'),
+      getCompaniesForUser(req.user),
       db.queryOne('SELECT id, name, logo_url FROM companies WHERE is_default = true')
         .then(r => r || db.queryOne('SELECT id, name, logo_url FROM companies ORDER BY id LIMIT 1')),
-      db.query('SELECT id, code, label, display_order FROM roles ORDER BY display_order, id')
+      cidParam
+        ? db.query('SELECT DISTINCT r.id, r.code, r.label, r.display_order FROM roles r INNER JOIN role_menus rm ON rm.role = r.code AND rm.company_id = $1 ORDER BY r.display_order, r.id', [cidParam])
+        : db.query('SELECT id, code, label, display_order FROM roles ORDER BY display_order, id')
     ]);
-    const company = companyRow ? companyRow.id : null;
-    const sequences = (seqRows || []).filter(r => r.company_id === company);
-    const settingsRow = company ? await db.queryOne('SELECT auto_approve FROM company_settings WHERE company_id = $1', [company]) : null;
+    const cid = cidParam || defaultCompany?.id || (companies[0]?.id);
+    const companyRow = cid ? await db.queryOne('SELECT id, name, logo_url FROM companies WHERE id = $1', [cid]) : null;
+    const sequences = (seqRows || []).filter(r => r.company_id === cid);
+    const settingsRow = cid ? await db.queryOne('SELECT auto_approve FROM company_settings WHERE company_id = $1', [cid]) : null;
     res.json({
       sequences: sequences.length ? sequences : [],
       company: companyRow,
+      companies: companies || [],
       roles: rolesData || [],
       auto_approve: settingsRow?.auto_approve ?? false,
     });
@@ -1092,16 +1893,23 @@ app.get('/api/admin/batch/approval-sequence', requireAdmin, async (req, res) => 
 
 app.get('/api/admin/batch/role-permissions', requireAdmin, async (req, res) => {
   try {
-    const [rolesData, menuRows] = await Promise.all([
-      db.query('SELECT id, code, label, display_order FROM roles ORDER BY display_order, id'),
-      db.query('SELECT role, menu_path FROM role_menus ORDER BY role, menu_path')
+    const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
+      ? parseInt(req.query.company_id, 10) : null;
+    const rolesSql = cid
+      ? 'SELECT DISTINCT r.id, r.code, r.label, r.display_order FROM roles r INNER JOIN role_menus rm ON rm.role = r.code AND rm.company_id = $1 ORDER BY r.display_order, r.id'
+      : 'SELECT id, code, label, display_order FROM roles ORDER BY display_order, id';
+    const rolesParams = cid ? [cid] : [];
+    const [rolesData, menuRows, companiesData] = await Promise.all([
+      db.query(rolesSql, rolesParams),
+      cid ? db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [cid]) : [],
+      getCompaniesForUser(req.user)
     ]);
     const byRole = {};
     (menuRows || []).forEach(r => {
       if (!byRole[r.role]) byRole[r.role] = [];
       byRole[r.role].push(r.menu_path);
     });
-    res.json({ roles: rolesData || [], roleMenus: byRole });
+    res.json({ roles: rolesData || [], roleMenus: byRole, companies: companiesData || [] });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1113,7 +1921,12 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
     const conditions = [];
     const params = [];
     let idx = 1;
-    if (company_id != null && company_id !== '') { params.push(parseInt(company_id, 10)); conditions.push(`au.company_id = $${idx++}`); }
+    if (company_id != null && company_id !== '') {
+      const cid = parseInt(company_id, 10);
+      if (isNaN(cid)) return res.status(400).json({ error: '유효하지 않은 회사 ID' });
+      params.push(cid);
+      conditions.push(`uc.company_id = $${idx++}`);
+    }
     if (project_id != null && project_id !== '') { params.push(parseInt(project_id, 10)); conditions.push(`au.project_id = $${idx++}`); }
     if (role != null && role !== '') { params.push(role.trim()); conditions.push(`au.role = $${idx++}`); }
     if (name != null && name.trim() !== '') {
@@ -1124,21 +1937,44 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const limitVal = limit != null ? Math.min(parseInt(limit, 10) || 20, 100) : 20;
     const offsetVal = offset != null ? Math.max(0, parseInt(offset, 10)) : 0;
+    const roleMenusCid = (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10)))
+      ? parseInt(company_id, 10) : null;
+    const filterCid = roleMenusCid;
+
+    const usersParams = [...params, limitVal, offsetVal];
+    const projectsSql = filterCid
+      ? 'SELECT id, name FROM projects WHERE company_id = $1 OR company_id IS NULL ORDER BY name'
+      : 'SELECT id, name FROM projects ORDER BY name';
+    const projectsParams = filterCid ? [filterCid] : [];
+    const rolesSql = filterCid
+      ? 'SELECT DISTINCT r.id, r.code, r.label, r.display_order FROM roles r INNER JOIN role_menus rm ON rm.role = r.code AND rm.company_id = $1 ORDER BY r.display_order, r.id'
+      : 'SELECT id, code, label, display_order FROM roles ORDER BY display_order, id';
+    const rolesParams = filterCid ? [filterCid] : [];
 
     const [usersRes, rolesData, menuRows, projectsData, companiesData] = await Promise.all([
       db.query(`
+        WITH user_companies AS (
+          SELECT user_id, company_id FROM auth_user_companies
+          UNION
+          SELECT id as user_id, company_id FROM auth_users WHERE company_id IS NOT NULL
+        )
         SELECT au.id, au.email, au.name, au.role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
-               p.name as project_name, COUNT(*) OVER ()::int as total
+               p.name as project_name, uc.company_id as row_company_id, c.name as row_company_name,
+               COUNT(*) OVER ()::int as total
         FROM auth_users au
+        JOIN user_companies uc ON uc.user_id = au.id
+        JOIN companies c ON c.id = uc.company_id
         LEFT JOIN projects p ON p.id = au.project_id
         ${where}
-        ORDER BY au.is_approved ASC, au.created_at DESC
+        ORDER BY au.is_approved ASC, c.name, au.email
         LIMIT $${idx} OFFSET $${idx + 1}
-      `, [...params, limitVal, offsetVal]),
-      db.query('SELECT id, code, label, display_order FROM roles ORDER BY display_order, id'),
-      db.query('SELECT role, menu_path FROM role_menus ORDER BY role, menu_path'),
-      db.query('SELECT id, name FROM projects ORDER BY name'),
-      db.query('SELECT id, name, is_default FROM companies ORDER BY is_default DESC, id')
+      `, usersParams),
+      db.query(rolesSql, rolesParams),
+      roleMenusCid
+        ? db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [roleMenusCid])
+        : db.query('SELECT role, menu_path FROM role_menus WHERE company_id = (SELECT id FROM companies WHERE is_default = true LIMIT 1) ORDER BY role, menu_path'),
+      db.query(projectsSql, projectsParams),
+      getCompaniesForUser(req.user)
     ]);
     const total = usersRes.length ? parseInt(usersRes[0].total || 0, 10) : 0;
     const rows = usersRes.map(({ total: _, ...r }) => r);
@@ -1167,19 +2003,25 @@ app.put('/api/admin/approval-sequences', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/admin/edit-history', requireAdmin, async (req, res) => {
-  const { limit, offset } = req.query;
+  const { limit, offset, company_id } = req.query;
   const lim = limit != null ? Math.min(parseInt(limit, 10) || 50, 100) : 50;
   const off = offset != null ? Math.max(0, parseInt(offset, 10)) : 0;
   try {
+    let joinClause = 'FROM admin_edit_history aeh JOIN expense_documents ed ON ed.id = aeh.document_id';
+    const params = [];
+    if (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10))) {
+      params.push(parseInt(company_id, 10));
+      joinClause += ` JOIN auth_users au ON au.name = ed.user_name AND (au.company_id = $1 OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $1))`;
+    }
+    params.push(lim, off);
     const rowsRes = await db.query(`
       SELECT aeh.id, aeh.document_id, aeh.admin_name, aeh.document_status, aeh.created_at,
              ed.doc_no, ed.user_name, ed.project_name, ed.period_start, ed.period_end,
              COUNT(*) OVER ()::int as total
-      FROM admin_edit_history aeh
-      JOIN expense_documents ed ON ed.id = aeh.document_id
+      ${joinClause}
       ORDER BY aeh.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [lim, off]);
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
     const total = rowsRes.length ? parseInt(rowsRes[0].total || 0, 10) : 0;
     const rows = rowsRes.map(({ total: _, ...r }) => r);
     res.json({ rows, total });
@@ -1220,46 +2062,45 @@ app.put('/api/admin/company-settings', requireAdmin, async (req, res) => {
 
 app.get('/api/export/batch-approval-excel', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const { period_from, period_to, status, project, card_no } = req.query;
+  const { period_from, period_to, status, project, card_no, company_id } = req.query;
   try {
     const ExcelJS = require('exceljs');
+    const companyId = company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
+    const companyIds = !companyId && req.user?.id ? await getCurrentUserCompanyIds(req.user.id) : null;
+    const params = [];
+    const companyFilter = buildCompanyFilterJoin(company_id, companyIds, params);
     const buildWhere = (strict = true) => {
-      const where = [];
-      const params = [];
-      if (status) { params.push(status); where.push(`ed.status = $${params.length}`); }
-      if (project) { params.push(project); where.push(`ed.project_name = $${params.length}`); }
+      const where = companyFilter ? [companyFilter.whereCond] : [];
+      let pIdx = params.length + 1;
+      if (status) { params.push(status); where.push(`ed.status = $${pIdx++}`); }
+      if (project) { params.push(project); where.push(`ed.project_name = $${pIdx++}`); }
       if (card_no != null && String(card_no).trim() !== '') {
         params.push(`%${String(card_no).trim()}%`);
-        where.push(`(ed.card_no ILIKE $${params.length})`);
+        where.push(`(ed.card_no ILIKE $${pIdx++})`);
       }
       if (strict) {
-        if (period_from) { params.push(period_from); where.push(`ed.period_end >= $${params.length}`); }
-        if (period_to) { params.push(period_to); where.push(`ed.period_start <= $${params.length}`); }
+        if (period_from) { params.push(period_from); where.push(`ed.period_end >= $${pIdx++}`); }
+        if (period_to) { params.push(period_to); where.push(`ed.period_start <= $${pIdx++}`); }
       }
       return { where, params };
     };
-    let { where, params } = buildWhere(true);
+    let { where } = buildWhere(true);
     let whereClause = where.length ? ' WHERE ' + where.join(' AND ') : '';
+    const joinPart = companyFilter ? companyFilter.join : '';
+    const fromClause = `FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id${joinPart}`;
+    const selectCols = 'ei.use_date, ei.project_name, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ei.remark, ed.card_no, ed.user_name, ed.period_start, ed.period_end';
     let items = await db.query(`
-      SELECT ei.use_date, ei.project_name, ei.account_item_name, ei.description,
-        ei.card_amount, ei.cash_amount, ei.total_amount, ei.remark,
-        ed.card_no, ed.user_name, ed.period_start, ed.period_end
-      FROM expense_items ei
-      JOIN expense_documents ed ON ed.id = ei.document_id${whereClause}
+      SELECT ${selectCols} ${fromClause} ${whereClause}
       ORDER BY ei.use_date, ei.id
     `, params);
     if (items.length === 0) {
       const fallback = buildWhere(false);
       whereClause = fallback.where.length ? ' WHERE ' + fallback.where.join(' AND ') : '';
       items = await db.query(`
-        SELECT ei.use_date, ei.project_name, ei.account_item_name, ei.description,
-          ei.card_amount, ei.cash_amount, ei.total_amount, ei.remark,
-          ed.card_no, ed.user_name, ed.period_start, ed.period_end
-        FROM expense_items ei
-        JOIN expense_documents ed ON ed.id = ei.document_id${whereClause}
+        SELECT ${selectCols} ${fromClause} ${whereClause}
         ORDER BY ei.use_date DESC, ei.id
         LIMIT 2000
-      `, fallback.params);
+      `, params);
     }
     const cardLabels = {};
     const ucRows = await db.query('SELECT card_no, label FROM user_cards');

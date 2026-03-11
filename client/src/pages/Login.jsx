@@ -10,7 +10,7 @@ export default function Login() {
   const [company, setCompany] = useState({ name: 'Construct Logic', logo_url: null });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, user, loading: authLoading } = useAuth();
+  const { login, user, firstAccessiblePath, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -18,8 +18,10 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    if (user && !authLoading) navigate('/', { replace: true });
-  }, [user, authLoading, navigate]);
+    if (user && !authLoading) {
+      navigate(firstAccessiblePath || '/', { replace: true });
+    }
+  }, [user, firstAccessiblePath, authLoading, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,7 +29,6 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email.trim(), password);
-      navigate('/', { replace: true });
     } catch (err) {
       setError(err.message || '로그인에 실패했습니다.');
     } finally {

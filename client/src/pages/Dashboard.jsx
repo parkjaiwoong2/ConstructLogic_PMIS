@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { api, nextTick } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import ProgressBar from '../components/ProgressBar';
 import './Dashboard.css';
 
@@ -13,9 +14,12 @@ const CHART_COLORS = ['#1e5a8e', '#2a7ab8', '#0d9488', '#059669', '#d97706', '#d
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState([]);
+  const [companyId, setCompanyId] = useState('');
   const [from, setFrom] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
@@ -23,12 +27,23 @@ export default function Dashboard() {
   });
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
+  useEffect(() => {
+    api.getCompanies({ list: 1 }).then(list => {
+      const arr = list || [];
+      setCompanies(arr);
+      const def = arr.length === 1 ? arr[0] : (arr.find(c => c.id === user?.company_id) || arr[0]);
+      if (def) setCompanyId(String(def.id));
+    }).catch(() => setCompanies([]));
+  }, []);
+
   const loadSummary = async () => {
     setLoading(true);
     setError(null);
     await nextTick();
     try {
-      const data = await api.getDashboardSummary({ from, to });
+      const params = { from, to };
+      if (companyId) params.company_id = companyId;
+      const data = await api.getDashboardSummary(params);
       setSummary(data);
       setError(null);
     } catch (err) {
@@ -39,7 +54,7 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => { loadSummary(); }, [from, to]);
+  useEffect(() => { loadSummary(); }, [from, to, companyId]);
 
   if (loading && !summary) return <ProgressBar loading={loading} />;
   if (error) return (
@@ -78,6 +93,12 @@ export default function Dashboard() {
       <header className="page-header">
         <h1>CEO 대시보드</h1>
         <span className="chart-hint">그래프를 클릭하면 상세 내역을 볼 수 있습니다</span>
+        <select value={companyId || ''} onChange={e => setCompanyId(e.target.value || '')} disabled={companies.length === 1} style={{ minWidth: 140 }}>
+          <option value="">전체 회사</option>
+          {companies.map(c => (
+            <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
+          ))}
+        </select>
         <div className="date-range">
           <input type="date" value={from} onChange={e => setFrom(e.target.value)} />
           <span>~</span>
@@ -154,7 +175,7 @@ export default function Dashboard() {
 
       <div className="quick-actions">
         <Link to="/expense/new" className="btn btn-primary">사용내역 입력</Link>
-        <Link to="/documents" className="btn btn-secondary">결재 문서 목록</Link>
+        <Link to="/approval-processing" className="btn btn-secondary">결재처리</Link>
       </div>
     </div>
   );

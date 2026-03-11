@@ -40,9 +40,10 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const { token, user: u } = await api.login({ email, password });
     localStorage.setItem('auth_token', token);
-    const { menus: m } = await api.authMe();
-    setUser(u);
+    const { user: u2, menus: m, company: c } = await api.authMe();
+    setUser(u2 || u);
     setMenus(m || []);
+    setCompany(c || null);
   };
 
   const logout = () => {
@@ -59,8 +60,23 @@ export function AuthProvider({ children }) {
     return menus.some(m => m === norm || m === path);
   };
 
+  const MENU_ORDER = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/permissions', '/admin/edit-history', '/admin/super'];
+  const ADMIN_PATHS = ['/admin/company', '/admin/permissions', '/admin/edit-history', '/admin/super'];
+  const SUPER_ONLY_PATHS = ['/admin/super'];
+  const firstAccessiblePath = (() => {
+    if (!user) return '/';
+    const hasAdmin = user.is_admin || user.role === 'admin';
+    const isSuper = user.is_admin === true;
+    for (const p of MENU_ORDER) {
+      if (ADMIN_PATHS.includes(p) && !hasAdmin) continue;
+      if (SUPER_ONLY_PATHS.includes(p) && !isSuper) continue;
+      if (canAccess(p)) return p;
+    }
+    return '/';
+  })();
+
   return (
-    <AuthContext.Provider value={{ user, menus, company, loading, login, logout, loadAuth, canAccess }}>
+    <AuthContext.Provider value={{ user, menus, company, loading, login, logout, loadAuth, canAccess, firstAccessiblePath }}>
       {children}
     </AuthContext.Provider>
   );

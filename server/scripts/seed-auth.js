@@ -8,14 +8,12 @@ const MENUS = [
   { path: '/expense/new', label: '사용내역 입력' },
   { path: '/expenses', label: '사용내역 조회' },
   { path: '/import', label: 'CSV 임포트' },
-  { path: '/documents', label: '결재 문서' },
-  { path: '/approval', label: '결재함' },
+  { path: '/approval-processing', label: '결재처리' },
+  { path: '/card-management', label: '법인카드 관리' },
   { path: '/masters', label: '마스터 관리' },
-  { path: '/settings', label: '내 설정' },
+  { path: '/settings', label: '설정' },
   { path: '/admin/company', label: '회사 등록' },
-  { path: '/admin/users', label: '사용자 권한' },
-  { path: '/admin/role-permissions', label: '역할권한' },
-  { path: '/admin/approval-sequence', label: '결재순서' },
+  { path: '/admin/permissions', label: '권한관리' },
 ];
 
 async function run() {
@@ -55,15 +53,15 @@ async function run() {
   for (const role of ['author', 'reviewer', 'approver', 'ceo']) {
     for (const m of MENUS.filter(x => !x.path.startsWith('/admin'))) {
       await db.run(
-        'INSERT INTO role_menus (role, menu_path) VALUES ($1, $2) ON CONFLICT (role, menu_path) DO NOTHING',
-        [role, m.path]
+        'INSERT INTO role_menus (company_id, role, menu_path) VALUES ($1, $2, $3) ON CONFLICT (company_id, role, menu_path) DO NOTHING',
+        [companyId, role, m.path]
       );
     }
   }
   for (const m of MENUS) {
     await db.run(
-      'INSERT INTO role_menus (role, menu_path) VALUES ($1, $2) ON CONFLICT (role, menu_path) DO NOTHING',
-      ['admin', m.path]
+      'INSERT INTO role_menus (company_id, role, menu_path) VALUES ($1, $2, $3) ON CONFLICT (company_id, role, menu_path) DO NOTHING',
+      [companyId, 'admin', m.path]
     );
   }
 

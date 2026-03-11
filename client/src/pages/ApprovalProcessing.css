@@ -1,0 +1,24 @@
+.approval-processing { padding-bottom: 1rem; }
+.approval-processing .approval-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-border, #eee);
+  margin-bottom: 1rem;
+}
+.approval-processing .approval-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.approval-processing .approval-tab:hover { color: var(--color-text); }
+.approval-processing .approval-tab.active {
+  color: var(--color-primary);
+  font-weight: 600;
+  border-bottom-color: var(--color-primary);
+}
+.approval-processing .approval-tab-content { margin-top: 0; }

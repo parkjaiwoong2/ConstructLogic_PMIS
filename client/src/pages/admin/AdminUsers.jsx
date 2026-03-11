@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api, nextTick } from '../../api';
+import { useAuth } from '../../contexts/AuthContext';
 import ProgressBar from '../../components/ProgressBar';
 import Pagination, { PAGE_SIZE } from '../../components/Pagination';
 import './Admin.css';
@@ -9,6 +10,12 @@ export default function AdminUsers() {
   const [roles, setRoles] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [projectsForCompany, setProjectsForCompany] = useState([]); // 선택한 회사 소속 현장(구분)
+  const [rolesForCompany, setRolesForCompany] = useState([]); // 선택한 회사에서 설정한 역할
+  const [projectsForFilter, setProjectsForFilter] = useState([]);
+  const [rolesForFilter, setRolesForFilter] = useState([]);
+  const [projectsByCompany, setProjectsByCompany] = useState({}); // 회사별 구분 (테이블 행용)
+  const [rolesByCompany, setRolesByCompany] = useState({}); // 회사별 역할 (테이블 행용)
   const [roleMenus, setRoleMenus] = useState({});
   const [loading, setLoading] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -19,20 +26,23 @@ export default function AdminUsers() {
   const [newCompanyId, setNewCompanyId] = useState('');
   const [newApproved, setNewApproved] = useState(true);
   const [edits, setEdits] = useState({});
+  const { company } = useAuth();
   const [filters, setFilters] = useState({ company_id: '', project_id: '', role: '', name: '' });
   const [page, setPage] = useState(1);
+  const hasSetDefaultCompany = useRef(false);
   const pageSize = PAGE_SIZE;
   const [totalUsers, setTotalUsers] = useState(0);
 
-  const load = async (pageOverride) => {
+  const load = async (pageOverride, filterOverrides) => {
     setLoading(true);
     await nextTick();
     try {
+      const ef = filterOverrides ? { ...filters, ...filterOverrides } : filters;
       const params = {};
-      if (filters.company_id) params.company_id = filters.company_id;
-      if (filters.project_id) params.project_id = filters.project_id;
-      if (filters.role) params.role = filters.role;
-      if (filters.name?.trim()) params.name = filters.name.trim();
+      if (ef.company_id) params.company_id = ef.company_id;
+      if (ef.project_id) params.project_id = ef.project_id;
+      if (ef.role) params.role = ef.role;
+      if (ef.name?.trim()) params.name = ef.name.trim();
       const effectivePage = pageOverride ?? page;
       params.limit = pageSize;
       params.offset = (effectivePage - 1) * pageSize;
@@ -46,6 +56,19 @@ export default function AdminUsers() {
       setRoleMenus(data?.roleMenus && typeof data.roleMenus === 'object' ? data.roleMenus : {});
       setProjects(Array.isArray(data?.projects) ? data.projects : []);
       setCompanies(Array.isArray(comp) ? comp : []);
+      const projList = Array.isArray(data?.projects) ? data.projects : [];
+      const roleList = Array.isArray(data?.roles) ? data.roles : [];
+      setProjectsForFilter(projList);
+      setRolesForFilter(roleList);
+      const cids = [...new Set(u.map(x => x.row_company_id ?? x.company_id).filter(Boolean))];
+      cids.forEach(cid => {
+        Promise.all([api.getProjects(cid), api.getRolesByCompany(cid)])
+          .then(([p, r]) => {
+            setProjectsByCompany(prev => ({ ...prev, [cid]: Array.isArray(p) ? p : [] }));
+            setRolesByCompany(prev => ({ ...prev, [cid]: Array.isArray(r) ? r : [] }));
+          })
+          .catch(() => {});
+      });
       const defCompany = comp.find(c => c.is_default) || comp[0];
       if (!newCompanyId && defCompany) setNewCompanyId(String(defCompany.id));
       if (!newRole && Array.isArray(data?.roles) && data.roles.length) setNewRole(data.roles[0].code);
@@ -58,6 +81,36 @@ export default function AdminUsers() {
 
   useEffect(() => { load(); }, [page]);
 
+  useEffect(() => {
+    if (company?.id && !hasSetDefaultCompany.current) {
+      hasSetDefaultCompany.current = true;
+      const cid = String(company.id);
+      setFilters(f => ({ ...f, company_id: cid }));
+      load(1, { company_id: cid });
+    }
+  }, [company?.id]);
+
+  useEffect(() => {
+    if (!newCompanyId) {
+      setProjectsForCompany([]);
+      setRolesForCompany([]);
+      setNewProjectId('');
+      setNewRole('');
+      return;
+    }
+    const cid = parseInt(newCompanyId, 10);
+    Promise.all([api.getProjects(cid), api.getRolesByCompany(cid)])
+      .then(([p, r]) => {
+        const projList = Array.isArray(p) ? p : [];
+        const roleList = Array.isArray(r) ? r : [];
+        setProjectsForCompany(projList);
+        setRolesForCompany(roleList);
+        setNewProjectId(projList[0] ? String(projList[0].id) : '');
+        setNewRole(roleList[0]?.code || '');
+      })
+      .catch(() => { setProjectsForCompany([]); setRolesForCompany([]); setNewProjectId(''); setNewRole(''); });
+  }, [newCompanyId]);
+
   const handleSearch = () => {
     setPage(1);
     load(1);
@@ -67,8 +120,12 @@ export default function AdminUsers() {
 
   const addUser = async (e) => {
     e.preventDefault();
-    if (!newEmail.trim() || !newPassword) {
-      alert('이메일과 비밀번호를 입력하세요.');
+    if (!newEmail.trim()) {
+      alert('이메일을 입력하세요.');
+      return;
+    }
+    if (!newCompanyId) {
+      alert('회사를 선택하세요.');
       return;
     }
     setLoading(true);
@@ -151,15 +208,15 @@ export default function AdminUsers() {
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>)}
           </select>
           <input placeholder="이메일" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-          <input type="password" placeholder="비밀번호" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+          <input type="password" placeholder="비밀번호 (신규만 필수)" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
           <input placeholder="이름" value={newName} onChange={e => setNewName(e.target.value)} />
           <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)} style={{ minWidth: 120 }}>
             <option value="">구분 선택</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projectsForCompany.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <select value={newRole || ''} onChange={e => setNewRole(e.target.value)}>
             <option value="">역할 선택</option>
-            {roles.map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
+            {rolesForCompany.map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
           </select>
           <label><input type="checkbox" checked={newApproved} onChange={e => setNewApproved(e.target.checked)} /> 즉시승인</label>
           <button type="submit" className="btn btn-primary">추가</button>
@@ -184,7 +241,7 @@ export default function AdminUsers() {
             aria-label="구분"
           >
             <option value="">구분 전체</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projectsForFilter.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <select
             value={filters.role}
@@ -192,7 +249,7 @@ export default function AdminUsers() {
             aria-label="역할"
           >
             <option value="">역할 전체</option>
-            {roles.map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
+            {rolesForFilter.map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
           </select>
           <input
             type="search"
@@ -211,7 +268,7 @@ export default function AdminUsers() {
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id} style={!u.is_approved ? { backgroundColor: 'rgba(255,200,0,0.1)' } : {}}>
+              <tr key={`${u.id}-${u.row_company_id ?? u.company_id ?? 0}`} style={!u.is_approved ? { backgroundColor: 'rgba(255,200,0,0.1)' } : {}}>
                 <td>
                   <input
                     type="email"
@@ -240,12 +297,14 @@ export default function AdminUsers() {
                   />
                 </td>
                 <td>
+                  {u.row_company_name ?? (companies.find(c => c.id === u.company_id)?.name ?? '-')}
                   <select
                     value={String(getRowValue(u, 'company_id') ?? u.company_id ?? '')}
                     onChange={e => setRowEdit(u.id, 'company_id', e.target.value ? parseInt(e.target.value, 10) : null)}
-                    style={{ minWidth: 100 }}
+                    style={{ minWidth: 100, marginTop: 2 }}
+                    title="메인 회사"
                   >
-                    <option value="">선택</option>
+                    <option value="">메인회사</option>
                     {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </td>
@@ -256,7 +315,7 @@ export default function AdminUsers() {
                     style={{ minWidth: 100 }}
                   >
                     <option value="">구분 선택</option>
-                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {(projectsByCompany[getRowValue(u, 'company_id') ?? u.row_company_id ?? u.company_id] || projectsForFilter).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </td>
                 <td>
@@ -264,7 +323,7 @@ export default function AdminUsers() {
                     value={getRowValue(u, 'role') || u.role || ''}
                     onChange={e => setRowEdit(u.id, 'role', e.target.value)}
                   >
-                    {roles.map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
+                    {(rolesByCompany[getRowValue(u, 'company_id') ?? u.row_company_id ?? u.company_id] || rolesForFilter).map(r => <option key={r.id} value={r.code}>{r.label}</option>)}
                   </select>
                 </td>
                 <td>

@@ -35,3 +35,24 @@
 .admin-users-table { min-width: 900px; }
 .admin-users-table th { white-space: nowrap; }
 .admin-users-empty { color: var(--color-text-muted); text-align: center; padding: 2rem; font-size: 0.95rem; }
+
+/* 권한관리, 관리자관리 탭 */
+.admin-permissions .admin-tab,
+.admin-super .admin-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--color-text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.admin-permissions .admin-tab:hover,
+.admin-super .admin-tab:hover { color: var(--color-text); }
+.admin-permissions .admin-tab.active,
+.admin-super .admin-tab.active {
+  color: var(--color-primary);
+  font-weight: 600;
+  border-bottom-color: var(--color-primary);
+}

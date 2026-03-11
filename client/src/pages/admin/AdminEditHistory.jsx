@@ -26,16 +26,25 @@ export default function AdminEditHistory() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [companies, setCompanies] = useState([]);
+  const [companyId, setCompanyId] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.getCompanies({ list: 1 }).then(list => {
+      setCompanies(list || []);
+      const def = (list || []).find(c => c.is_default) || (list || [])[0];
+      if (def) setCompanyId(String(def.id));
+    }).catch(() => setCompanies([]));
+  }, []);
 
   const load = async () => {
     setLoading(true);
     await nextTick();
     try {
-      const data = await api.getAdminEditHistory({
-        limit: PAGE_SIZE,
-        offset: (page - 1) * PAGE_SIZE,
-      });
+      const params = { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE };
+      if (companyId) params.company_id = companyId;
+      const data = await api.getAdminEditHistory(params);
       setRows(data?.rows ?? []);
       setTotal(data?.total ?? 0);
     } catch (e) {
@@ -48,7 +57,7 @@ export default function AdminEditHistory() {
 
   useEffect(() => {
     load();
-  }, [page]);
+  }, [page, companyId]);
 
   return (
     <div className="admin-page">
@@ -57,6 +66,16 @@ export default function AdminEditHistory() {
         <h1>관리자 수정 히스토리</h1>
       </header>
       <p className="subtitle">관리자가 결재대기·승인·반려 상태의 문서를 수정한 내역입니다.</p>
+
+      <div className="filters" style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+        <label className="filter-label">회사</label>
+        <select value={companyId || ''} onChange={e => { setCompanyId(e.target.value || ''); setPage(1); }} style={{ minWidth: 160 }}>
+          <option value="">전체 회사</option>
+          {companies.map(c => (
+            <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
+          ))}
+        </select>
+      </div>
 
       <div className="card table-card">
         <table className="data-table">

@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function ProtectedRoute({ children, path }) {
-  const { user, loading, canAccess, menus, logout } = useAuth();
+  const { user, loading, canAccess, firstAccessiblePath, logout } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -12,7 +12,7 @@ export default function ProtectedRoute({ children, path }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   if (path && !canAccess(path)) {
-    const firstMenu = menus?.[0] ?? '/';
+    const firstMenu = firstAccessiblePath ?? '/';
     if (canAccess(firstMenu)) return <Navigate to={firstMenu} replace />;
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>

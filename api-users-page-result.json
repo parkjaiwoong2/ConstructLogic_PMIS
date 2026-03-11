@@ -1,0 +1,124 @@
+{
+  "rows": [],
+  "total": 0,
+  "roles": [
+    {
+      "id": 1,
+      "code": "admin",
+      "label": "관리자",
+      "display_order": 0
+    },
+    {
+      "id": 2,
+      "code": "author",
+      "label": "작성자",
+      "display_order": 1
+    },
+    {
+      "id": 3,
+      "code": "reviewer",
+      "label": "검토자",
+      "display_order": 2
+    },
+    {
+      "id": 4,
+      "code": "approver",
+      "label": "승인자",
+      "display_order": 3
+    },
+    {
+      "id": 5,
+      "code": "ceo",
+      "label": "CEO",
+      "display_order": 4
+    }
+  ],
+  "roleMenus": {
+    "admin": [
+      "/",
+      "/admin/approval-sequence",
+      "/admin/company",
+      "/admin/users",
+      "/approval",
+      "/documents",
+      "/expense/new",
+      "/expenses",
+      "/import",
+      "/masters",
+      "/settings"
+    ],
+    "approver": [
+      "/approval",
+      "/documents",
+      "/expense/new",
+      "/expenses",
+      "/import",
+      "/settings"
+    ],
+    "author": [
+      "/approval",
+      "/documents",
+      "/expense/new",
+      "/expenses",
+      "/import",
+      "/settings"
+    ],
+    "ceo": [
+      "/",
+      "/approval",
+      "/documents",
+      "/settings"
+    ],
+    "company_admin": [
+      "/",
+      "/admin/approval-sequence",
+      "/admin/company",
+      "/admin/corporate-cards",
+      "/admin/edit-history",
+      "/admin/role-permissions",
+      "/admin/users",
+      "/approval",
+      "/card-settlement",
+      "/documents",
+      "/expense/new",
+      "/expenses",
+      "/import",
+      "/masters",
+      "/settings"
+    ],
+    "reviewer": [
+      "/approval",
+      "/documents",
+      "/expense/new",
+      "/expenses",
+      "/import"
+    ]
+  },
+  "projects": [
+    {
+      "id": 2,
+      "name": "본사"
+    },
+    {
+      "id": 1,
+      "name": "본촌배수지"
+    }
+  ],
+  "companies": [
+    {
+      "id": 2,
+      "name": "언넌플랫폼",
+      "is_default": true
+    },
+    {
+      "id": 1,
+      "name": "동생사용회사1",
+      "is_default": false
+    },
+    {
+      "id": 4,
+      "name": "동생 사용 회사2",
+      "is_default": false
+    }
+  ]
+}

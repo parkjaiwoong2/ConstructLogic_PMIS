@@ -21,13 +21,19 @@ export default function ExpenseNew() {
   const isEdit = !!id;
 
   const [accountItems, setAccountItems] = useState([]);
+  const [accountItemsForCompany, setAccountItemsForCompany] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [projectsForCompany, setProjectsForCompany] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [userCards, setUserCards] = useState([]);
+  const [displayCompany, setDisplayCompany] = useState(null); // { company_id, company_name } for selected user
   const [form, setForm] = useState(() => {
     const today = todayStr();
     const defaultUser = typeof localStorage !== 'undefined' ? localStorage.getItem('currentUserName') || '' : '';
     return {
       user_name: defaultUser || '배명수',
+      company_id: '',
+      company_name: '',
       project_id: '',
       project_name: '',
       period_start: today,
@@ -48,10 +54,15 @@ export default function ExpenseNew() {
       setLoadingMasters(true);
       await nextTick();
       try {
-        const [items, projs] = await Promise.all([api.getAccountItems(), api.getProjects()]);
+        const [items, projs, comps] = await Promise.all([
+          api.getAccountItems(),
+          api.getProjects(),
+          api.getCompanies({ list: 1 }).catch(() => []),
+        ]);
         if (!cancelled) {
           setAccountItems(items);
           setProjects(projs);
+          setCompanies(Array.isArray(comps) ? comps : []);
         }
       } catch (e) {
         console.error(e);
@@ -66,20 +77,27 @@ export default function ExpenseNew() {
     const userName = form.user_name?.trim();
     if (!userName) {
       setUserCards([]);
+      setDisplayCompany(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const [cardsRes, settingsRes] = await Promise.all([
+        const [cardsRes, settingsRes, companyRes] = await Promise.all([
           api.getUserCards(userName),
           api.getUserSettings(userName),
+          api.getUserCompany(userName).catch(() => ({ company_id: null, company_name: null })),
         ]);
         if (!cancelled) {
           setUserCards(Array.isArray(cardsRes) ? cardsRes : []);
-          if (!isEdit && settingsRes?.default_project_id) {
-            const projList = await api.getProjects();
-            const p = projList.find(x => x.id === settingsRes.default_project_id);
+          const comp = companyRes || null;
+          setDisplayCompany(comp);
+          if (isAdmin && comp?.company_id) {
+            setForm(f => ({ ...f, company_id: String(comp.company_id), company_name: comp.company_name || '' }));
+          }
+          if (!isEdit && settingsRes?.default_project_id && comp?.company_id) {
+            const projList = await api.getProjects(comp.company_id);
+            const p = projList?.find(x => x.id === settingsRes.default_project_id);
             if (p) setForm(f => ({ ...f, project_id: p.id, project_name: p.name }));
           }
           if (!isEdit && cardsRes?.length) {
@@ -91,6 +109,29 @@ export default function ExpenseNew() {
     })();
     return () => { cancelled = true; };
   }, [form.user_name, isEdit]);
+
+  const effectiveCompany = isAdmin
+    ? (form.company_id && companies.find(c => String(c.id) === form.company_id)) || displayCompany
+    : displayCompany || (user?.company_id ? { company_id: user.company_id, company_name: companies.find(c => c.id === user.company_id)?.name } : null);
+
+  useEffect(() => {
+    const cid = effectiveCompany?.company_id;
+    if (!cid) {
+      setProjectsForCompany(projects);
+      setAccountItemsForCompany(accountItems);
+      return;
+    }
+    Promise.all([
+      api.getProjects(parseInt(cid, 10)),
+      api.getAccountItems(parseInt(cid, 10)),
+    ]).then(([p, a]) => {
+      setProjectsForCompany(Array.isArray(p) ? p : []);
+      setAccountItemsForCompany(Array.isArray(a) ? a : []);
+    }).catch(() => {
+      setProjectsForCompany([]);
+      setAccountItemsForCompany([]);
+    });
+  }, [effectiveCompany?.company_id, projects, accountItems]);
 
   useEffect(() => {
     if (isEdit && id) {
@@ -106,10 +147,14 @@ export default function ExpenseNew() {
             return;
           }
           if (!cancelled) setIsAdminEditMode(doc.status !== 'draft');
-          const projs = await api.getProjects();
-          const proj = projs?.find(p => p.id === doc.project_id || p.name === doc.project_name);
-          if (!cancelled) setForm({
+          const docCompany = await api.getUserCompany(doc.user_name).catch(() => ({}));
+          const projs = await api.getProjects(docCompany?.company_id);
+          const proj = Array.isArray(projs) && projs.find(p => p.id === doc.project_id || p.name === doc.project_name);
+          if (!cancelled) {
+          setForm({
           user_name: doc.user_name,
+          company_id: docCompany?.company_id ? String(docCompany.company_id) : '',
+          company_name: docCompany?.company_name || '',
           project_id: proj?.id ?? doc.project_id,
           project_name: proj?.name || doc.project_name,
           period_start: doc.period_start,
@@ -128,6 +173,8 @@ export default function ExpenseNew() {
               }))
             : [{ use_date: todayStr(), account_item_id: '', account_item_name: '', description: '', card_amount: '', cash_amount: '', mismatchWarning: null }],
           });
+          setDisplayCompany(docCompany?.company_id ? { company_id: docCompany.company_id, company_name: docCompany.company_name } : null);
+          }
         } catch (e) {
           console.error(e);
         } finally {
@@ -191,7 +238,8 @@ export default function ExpenseNew() {
       next[idx] = { ...next[idx], [field]: value };
       if (field === 'account_item_id') {
         next[idx].mismatchWarning = null;
-        const ai = accountItems.find(a => a.id === parseInt(value, 10));
+        const list = effectiveCompany?.company_id ? accountItemsForCompany : accountItems;
+        const ai = list.find(a => a.id === parseInt(value, 10));
         if (ai) next[idx].account_item_name = ai.name;
       }
       const updated = { ...f, items: next };
@@ -210,7 +258,8 @@ export default function ExpenseNew() {
 
   const setProject = (e) => {
     const v = e.target.value;
-    const p = projects.find(x => x.id === parseInt(v, 10) || x.name === v);
+    const projList = effectiveCompany?.company_id ? projectsForCompany : projects;
+    const p = projList.find(x => x.id === parseInt(v, 10) || x.name === v);
     setForm(f => ({ ...f, project_id: p?.id || '', project_name: p?.name || v }));
   };
 
@@ -280,6 +329,26 @@ export default function ExpenseNew() {
         <section className="card form-section">
           <h2>기본정보</h2>
           <div className="form-row">
+            <label>회사</label>
+            {isAdmin ? (
+              <select
+                value={form.company_id || ''}
+                onChange={e => {
+                  const c = companies.find(x => String(x.id) === e.target.value);
+                  setForm(f => ({ ...f, company_id: e.target.value, company_name: c?.name || '' }));
+                }}
+                disabled={companies.length === 1}
+              >
+                <option value="">선택</option>
+                {companies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
+                ))}
+              </select>
+            ) : (
+              <input type="text" value={effectiveCompany?.company_name || '-'} readOnly style={{ background: '#f5f5f5', color: '#333' }} />
+            )}
+          </div>
+          <div className="form-row">
             <label>사용자</label>
             <input value={form.user_name} onChange={e => setForm(f => ({ ...f, user_name: e.target.value }))} />
           </div>
@@ -287,7 +356,7 @@ export default function ExpenseNew() {
             <label>현장(공사)</label>
             <select value={form.project_id || form.project_name} onChange={setProject}>
               <option value="">선택</option>
-              {projects.map(p => (
+              {(effectiveCompany?.company_id ? projectsForCompany : projects).map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -361,7 +430,7 @@ export default function ExpenseNew() {
                         className={!row.account_item_id ? 'required' : ''}
                       >
                         <option value="">선택</option>
-                        {accountItems.map(a => (
+                        {(effectiveCompany?.company_id ? accountItemsForCompany : accountItems).map(a => (
                           <option key={a.id} value={a.id}>{a.name}</option>
                         ))}
                       </select>

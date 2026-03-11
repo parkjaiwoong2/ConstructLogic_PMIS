@@ -8,18 +8,17 @@ const ALL_MENUS = [
   { path: '/expense/new', label: '사용내역 입력' },
   { path: '/expenses', label: '사용내역 조회' },
   { path: '/import', label: 'CSV 임포트' },
-  { path: '/documents', label: '결재 문서' },
-  { path: '/approval', label: '결재함' },
-  { path: '/card-settlement', label: '카드정산' },
+  { path: '/approval-processing', label: '결재처리' },
+  { path: '/card-management', label: '법인카드 관리' },
   { path: '/masters', label: '마스터 관리' },
-  { path: '/settings', label: '내 설정' },
-  { path: '/admin/company', label: '회사 등록' },
-  { path: '/admin/users', label: '사용자 권한' },
-  { path: '/admin/role-permissions', label: '역할권한' },
-  { path: '/admin/approval-sequence', label: '결재순서' },
+  { path: '/settings', label: '설정' },
+  { path: '/admin/company', label: '회사정보관리' },
+  { path: '/admin/permissions', label: '권한관리' },
 ];
 
 export default function AdminRolePermissions() {
+  const [companies, setCompanies] = useState([]);
+  const [companyId, setCompanyId] = useState('');
   const [roles, setRoles] = useState([]);
   const [roleMenus, setRoleMenus] = useState({});
   const [loading, setLoading] = useState(false);
@@ -30,7 +29,9 @@ export default function AdminRolePermissions() {
     setLoading(true);
     await nextTick();
     try {
-      const data = await api.getAdminBatchRolePermissions();
+      const data = await api.getAdminBatchRolePermissions(companyId || undefined);
+      setCompanies(Array.isArray(data?.companies) ? data.companies : []);
+      if (!companyId && data?.companies?.length) setCompanyId(String(data.companies.find(c => c.is_default)?.id || data.companies[0]?.id || ''));
       setRoles(Array.isArray(data?.roles) ? data.roles : []);
       setRoleMenus(data?.roleMenus && typeof data.roleMenus === 'object' ? data.roleMenus : {});
     } catch (e) {
@@ -40,7 +41,7 @@ export default function AdminRolePermissions() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [companyId]);
 
   const toggleMenu = (path) => {
     if (!editingRole) return;
@@ -97,9 +98,12 @@ export default function AdminRolePermissions() {
   };
 
   const saveRoleMenus = async () => {
-    if (!editingRole) return;
+    if (!editingRole || !companyId) {
+      alert('회사를 선택한 후 저장하세요.');
+      return;
+    }
     try {
-      await api.updateRoleMenus({ role: editingRole, menus: roleMenus[editingRole] || [] });
+      await api.updateRoleMenus({ role: editingRole, menus: roleMenus[editingRole] || [], company_id: parseInt(companyId, 10) });
       alert('저장되었습니다.');
       load();
     } catch (err) {
@@ -113,7 +117,23 @@ export default function AdminRolePermissions() {
       <header className="page-header">
         <h1>역할권한</h1>
       </header>
-      <p className="subtitle">역할을 추가·수정·삭제하고, 역할별 메뉴 접근 권한을 설정합니다.</p>
+      <p className="subtitle">회사별 역할 메뉴 접근 권한을 설정합니다. 역할은 회사별로 다르게 설정할 수 있습니다.</p>
+
+      <section className="card">
+        <h2>회사 선택</h2>
+        <div style={{ marginBottom: '1rem' }}>
+          <select
+            value={companyId}
+            onChange={e => setCompanyId(e.target.value)}
+            style={{ minWidth: 200 }}
+          >
+            <option value="">회사 선택</option>
+            {companies.map(c => (
+              <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
+            ))}
+          </select>
+        </div>
+      </section>
 
       <section className="card">
         <h2>역할 관리</h2>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, nextTick } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import ProgressBar from '../components/ProgressBar';
 import './ImportCsv.css';
 
@@ -8,8 +9,13 @@ const CURRENT_USER_KEY = 'currentUserName';
 
 export default function ImportCsv() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin || user?.role === 'admin';
   const [text, setText] = useState('');
   const [userName, setUserName] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
+  const [companyId, setCompanyId] = useState('');
+  const [displayCompany, setDisplayCompany] = useState(null);
+  const [companies, setCompanies] = useState([]);
   const [cardNo, setCardNo] = useState('');
   const [defaultCardNo, setDefaultCardNo] = useState('');
   const [defaultProjectName, setDefaultProjectName] = useState('');
@@ -18,6 +24,12 @@ export default function ImportCsv() {
 
   useEffect(() => {
     api.getUsers().then(setUsers).catch(() => []);
+    api.getCompanies({ list: 1 }).then(list => {
+      const arr = Array.isArray(list) ? list : [];
+      setCompanies(arr);
+      const def = arr.length === 1 ? arr[0] : (arr.find(c => c.id === user?.company_id) || arr[0]);
+      if (def) setCompanyId(String(def.id));
+    }).catch(() => setCompanies([]));
   }, []);
 
   useEffect(() => {
@@ -26,6 +38,7 @@ export default function ImportCsv() {
 
   useEffect(() => {
     if (!userName?.trim()) {
+      setDisplayCompany(null);
       setDefaultCardNo('');
       setDefaultProjectName('');
       setCardNo('');
@@ -33,39 +46,33 @@ export default function ImportCsv() {
     }
     (async () => {
       try {
-        const [cards, settings, projects] = await Promise.all([
+        const [cards, settings, companyRes] = await Promise.all([
           api.getUserCards(userName),
           api.getUserSettings(userName),
-          api.getProjects(),
+          api.getUserCompany(userName).catch(() => ({})),
         ]);
+        setDisplayCompany(companyRes?.company_id ? { company_id: companyRes.company_id, company_name: companyRes.company_name } : null);
         const defaultCard = Array.isArray(cards) && (cards.find(c => c.is_default) || cards[0]);
         const dCard = defaultCard?.card_no || '';
         setDefaultCardNo(dCard);
         setCardNo(dCard);
-        const proj = projects?.find(p => p.id === settings?.default_project_id);
+        const projects = await api.getProjects(companyRes?.company_id);
+        const proj = Array.isArray(projects) && projects.find(p => p.id === settings?.default_project_id);
         setDefaultProjectName(proj?.name || '');
       } catch (e) { /* ignore */ }
     })();
   }, [userName]);
 
+  /** 엑셀 복사는 탭 구분. 탭 우선 사용 시 숫자 내 '10,150' 천단위 쉼표가 컬럼 분리되지 않음 */
   const parseCsvLine = (line) => {
-    const cols = [];
-    let cur = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        inQuotes = !inQuotes;
-      } else if ((ch === ',' || ch === '\t') && !inQuotes) {
-        cols.push(cur.trim().replace(/^"|"$/g, ''));
-        cur = '';
-      } else {
-        cur += ch;
-      }
-    }
-    cols.push(cur.trim().replace(/^"|"$/g, ''));
-    return cols;
+    const byTab = line.split('\t').map(c => c.trim().replace(/^"|"$/g, ''));
+    if (byTab.length >= 6) return byTab;
+    const byComma = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+    return byComma.length >= 6 ? byComma : byTab;
   };
+
+  const toAmount = (s) => (s || '').trim().replace(/,/g, '');
+
 
   const parseCsv = (csvText) => {
     const lines = csvText.trim().split(/\r?\n/);
@@ -78,19 +85,8 @@ export default function ImportCsv() {
       const projectName = (cols[1] || '').trim();
       const accountName = (cols[2] || '').trim();
       const desc = (cols[3] || '').trim();
-      let card = (cols[4] || '').trim();
-      let cash = (cols[5] || '').trim();
-      if (cols.length > 6) {
-        const rest = cols.slice(4).map(c => (c || '').trim());
-        if (rest.length === 2) {
-          card = rest[0];
-          cash = rest[1];
-        } else if (rest.length >= 3) {
-          const mid = Math.ceil(rest.length / 2);
-          card = rest.slice(0, mid).join('').replace(/,/g, '');
-          cash = rest.slice(mid).join('').replace(/,/g, '');
-        }
-      }
+      const card = toAmount(cols[4] || '');
+      const cash = toAmount(cols[5] || '');
       if (!useDate || /^날/.test(useDate) || useDate.includes('합') || useDate.includes('*')) continue;
       const dateMatch = useDate.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
       if (dateMatch) {
@@ -109,6 +105,9 @@ export default function ImportCsv() {
     return rows;
   };
 
+  const effectiveCompanyId = isAdmin ? (companyId || displayCompany?.company_id) : (displayCompany?.company_id ?? user?.company_id);
+  const effectiveCardNo = (cardNo || defaultCardNo || '').trim();
+
   const handleImport = async () => {
     const rows = parseCsv(text);
     if (rows.length === 0) {
@@ -123,6 +122,7 @@ export default function ImportCsv() {
         user_name: userName,
         card_no: effectiveCardNo,
         project_name: defaultProjectName || undefined,
+        company_id: effectiveCompanyId || undefined,
       });
       alert(`${r.count}건 임포트 완료. 문서번호: ${r.doc_no}`);
       navigate(`/documents/${r.id}`);
@@ -139,8 +139,21 @@ export default function ImportCsv() {
       <header className="page-header">
         <h1>CSV 임포트</h1>
       </header>
-      <p className="desc">엑셀에서 7행(헤더)부터 날짜~현금 열까지 선택 후 붙여넣으세요. 날짜 형식: YYYY-MM-DD</p>
+      <p className="desc">엑셀에서 날짜~현금 열(6열)을 선택 후 붙여넣으세요. 탭으로 구분되며, 10,150 같은 천단위 표기도 정상 인식됩니다. 날짜 형식: YYYY-MM-DD</p>
       <div className="card">
+        <div className="form-row">
+          <label>회사</label>
+          {isAdmin ? (
+            <select value={companyId || ''} onChange={e => setCompanyId(e.target.value)} disabled={companies.length === 1}>
+              <option value="">선택</option>
+              {companies.map(c => (
+                <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
+              ))}
+            </select>
+          ) : (
+            <input type="text" value={displayCompany?.company_name || (user?.company_id && companies.find(c => c.id === user.company_id)?.name) || '-'} readOnly style={{ background: '#f5f5f5', color: '#333' }} />
+          )}
+        </div>
         <div className="form-row">
           <label>사용자</label>
           <input

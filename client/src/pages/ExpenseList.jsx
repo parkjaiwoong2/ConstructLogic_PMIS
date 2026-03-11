@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, nextTick } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import Pagination, { PAGE_SIZE } from '../components/Pagination';
 import ProgressBar from '../components/ProgressBar';
 import './DocumentList.css';
@@ -18,13 +19,21 @@ function getDefaultDateRange() {
   };
 }
 
+function getDefaultCompanyForCombo(list, user) {
+  if (!list?.length) return null;
+  if (list.length === 1) return list[0];
+  return list.find(c => c.id === user?.company_id) || list[0];
+}
+
 export default function ExpenseList() {
+  const { user, company } = useAuth();
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [projects, setProjects] = useState([]);
   const [accountItems, setAccountItems] = useState([]);
   const [users, setUsers] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [filter, setFilter] = useState(() => ({
     ...getDefaultDateRange(),
     status: '',
@@ -32,6 +41,7 @@ export default function ExpenseList() {
     account_item_name: '',
     user_name: '',
     description: '',
+    company_id: '',
   }));
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -43,6 +53,7 @@ export default function ExpenseList() {
     await nextTick();
     const params = { ...filter, limit: PAGE_SIZE, offset: (p - 1) * PAGE_SIZE };
     Object.keys(params).forEach(k => { if (params[k] === '' || params[k] == null) delete params[k]; });
+    if (params.company_id) params.company_id = parseInt(params.company_id, 10) || undefined;
     try {
       const data = await api.getExpenses(params);
       if (Array.isArray(data)) {
@@ -60,7 +71,7 @@ export default function ExpenseList() {
     }
   };
 
-  useEffect(() => { load(); }, [page, filter.from, filter.to, filter.status, filter.project, filter.account_item_name, filter.user_name, filter.description]);
+  useEffect(() => { load(); }, [page, filter.from, filter.to, filter.status, filter.project, filter.account_item_name, filter.user_name, filter.description, filter.company_id]);
 
   const handleDelete = async (docId) => {
     if (!confirm('이 문서를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.')) return;
@@ -77,7 +88,28 @@ export default function ExpenseList() {
       setLoading(false);
     }
   };
-  useEffect(() => { api.getProjects().then(setProjects); api.getAccountItems().then(setAccountItems); api.getUsers().then(setUsers).catch(() => []); }, []);
+  useEffect(() => {
+    const cid = filter.company_id ? parseInt(filter.company_id, 10) : null;
+    (cid ? api.getProjects(cid) : api.getProjects()).then(setProjects).catch(() => setProjects([]));
+  }, [filter.company_id]);
+
+  useEffect(() => {
+    const cid = filter.company_id ? parseInt(filter.company_id, 10) : undefined;
+    api.getAccountItems(cid).then(setAccountItems).catch(() => setAccountItems([]));
+  }, [filter.company_id]);
+
+  useEffect(() => {
+    api.getUsers().then(setUsers).catch(() => []);
+    api.getCompanies({ list: 1 }).then(list => {
+      const arr = list || [];
+      setCompanies(arr);
+      setFilter(prev => {
+        if (prev.company_id) return prev;
+        const def = getDefaultCompanyForCombo(arr, user);
+        return def ? { ...prev, company_id: String(def.id) } : prev;
+      });
+    }).catch(() => setCompanies([]));
+  }, []);
 
   return (
     <div className="document-list">
@@ -90,6 +122,11 @@ export default function ExpenseList() {
       <section className="card filter-section" style={{ marginBottom: '1rem' }}>
         <h2 style={{ marginBottom: '0.75rem', fontSize: '0.95rem' }}>조회 조건</h2>
         <div className="filter-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <label className="filter-label">회사</label>
+          <select value={filter.company_id || ''} onChange={e => setFilter(f => ({ ...f, company_id: e.target.value || '' }))} disabled={companies.length === 1}>
+            <option value="">전체 회사</option>
+            {companies.map(c => <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>)}
+          </select>
           <label className="filter-label">기간</label>
           <input type="date" value={filter.from} onChange={e => setFilter(f => ({ ...f, from: e.target.value }))} />
           <span>~</span>
