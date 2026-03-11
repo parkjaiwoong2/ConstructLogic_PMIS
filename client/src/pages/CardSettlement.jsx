@@ -22,7 +22,7 @@ function maskCard(c) {
 function getDefaultPeriod() {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 23);
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const period_from = prev.toISOString().slice(0, 10);
   return { period_from, period_to: today };
 }
