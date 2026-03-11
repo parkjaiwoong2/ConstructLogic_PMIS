@@ -32,6 +32,8 @@ export default function CardSettlement() {
   const isAdmin = user?.is_admin || user?.role === 'admin';
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
+  const [sumCardAmount, setSumCardAmount] = useState(0);
+  const [sumCashAmount, setSumCashAmount] = useState(0);
   const [page, setPage] = useState(1);
   const [projects, setProjects] = useState([]);
   const [cards, setCards] = useState([]);
@@ -66,10 +68,14 @@ export default function CardSettlement() {
       const data = await api.getCardSettlement(params);
       setItems(data.items || []);
       setTotal(data.total ?? 0);
+      setSumCardAmount(data.sum_card_amount ?? 0);
+      setSumCashAmount(data.sum_cash_amount ?? 0);
     } catch (err) {
       console.error('카드정산 조회 실패:', err);
       setItems([]);
       setTotal(0);
+      setSumCardAmount(0);
+      setSumCashAmount(0);
       alert(err?.message || '조회 실패');
     } finally {
       setLoading(false);
@@ -320,6 +326,11 @@ export default function CardSettlement() {
         </table>
         {items.length === 0 && (
           <div className="empty">승인된 카드 사용 결재 문서가 없습니다.</div>
+        )}
+        {items.length > 0 && (
+          <div className="settlement-summary" style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--color-bg-muted, #f8fafc)', borderRadius: 6, fontWeight: 600 }}>
+            합계: 카드금액 {formatCurrency(sumCardAmount)}원 · 현금금액 {formatCurrency(sumCashAmount)}원
+          </div>
         )}
         <Pagination total={total} page={page} onChange={setPage} />
       </div>

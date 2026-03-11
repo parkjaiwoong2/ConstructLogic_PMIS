@@ -172,14 +172,21 @@ app.get('/api/card-settlement', async (req, res) => {
     const whereClause = ' WHERE ' + where.join(' AND ');
     const limitVal = limit != null ? Math.min(parseInt(limit, 10) || 50, 100) : 50;
     const offsetVal = offset != null ? Math.max(0, parseInt(offset, 10)) : 0;
-    const [countRes, rowsRes] = await Promise.all([
+    const [countRes, rowsRes, sumRes] = await Promise.all([
       db.query(`SELECT COUNT(*)::int as total FROM expense_documents${whereClause}`, params),
       db.query(`SELECT id, doc_no, user_name, project_name, period_start, period_end, card_no, total_card_amount, total_cash_amount, settled_at
         FROM expense_documents${whereClause}
         ORDER BY period_start DESC, id DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limitVal, offsetVal]),
+      db.query(`SELECT COALESCE(SUM(total_card_amount), 0)::bigint as sum_card, COALESCE(SUM(total_cash_amount), 0)::bigint as sum_cash FROM expense_documents${whereClause}`, params),
     ]);
-    res.json({ items: rowsRes, total: countRes[0]?.total ?? 0 });
+    const sumRow = sumRes[0];
+    res.json({
+      items: rowsRes,
+      total: countRes[0]?.total ?? 0,
+      sum_card_amount: sumRow ? Number(sumRow.sum_card) : 0,
+      sum_cash_amount: sumRow ? Number(sumRow.sum_cash) : 0,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
