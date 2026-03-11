@@ -774,11 +774,14 @@ app.get('/api/admin/companies', requireAdmin, async (req, res) => {
     const withSettings = req.query.with_settings === '1' || req.query.with_settings === 'true';
     const [rows, settingsRow] = await Promise.all([
       db.query('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text, is_default FROM companies ORDER BY is_default DESC, id'),
-      withSettings ? (async () => {
-        const def = await db.queryOne('SELECT id FROM companies WHERE is_default = true');
-        const cid = def?.id || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
-        return cid ? await db.queryOne('SELECT auto_approve FROM company_settings WHERE company_id = $1', [cid]) : null;
-      })() : Promise.resolve(null),
+      withSettings ? db.queryOne(`
+        SELECT auto_approve FROM company_settings
+        WHERE company_id = COALESCE(
+          (SELECT id FROM companies WHERE is_default = true LIMIT 1),
+          (SELECT id FROM companies ORDER BY id LIMIT 1)
+        )
+        LIMIT 1
+      `) : Promise.resolve(null),
     ]);
     if (withSettings) {
       res.json({ companies: rows, auto_approve: settingsRow?.auto_approve ?? false });
