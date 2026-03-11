@@ -1078,7 +1078,13 @@ app.get('/api/admin/batch/approval-sequence', requireAdmin, async (req, res) => 
     ]);
     const company = companyRow ? companyRow.id : null;
     const sequences = (seqRows || []).filter(r => r.company_id === company);
-    res.json({ sequences: sequences.length ? sequences : [], company: companyRow, roles: rolesData || [] });
+    const settingsRow = company ? await db.queryOne('SELECT auto_approve FROM company_settings WHERE company_id = $1', [company]) : null;
+    res.json({
+      sequences: sequences.length ? sequences : [],
+      company: companyRow,
+      roles: rolesData || [],
+      auto_approve: settingsRow?.auto_approve ?? false,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1196,14 +1202,17 @@ app.get('/api/admin/company-settings', async (req, res) => {
 
 app.put('/api/admin/company-settings', requireAdmin, async (req, res) => {
   const { company_id, auto_approve } = req.body;
-  const cid = company_id && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : (await db.queryOne('SELECT id FROM companies LIMIT 1'))?.id;
+  const cid = company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10))
+    ? parseInt(company_id, 10)
+    : (await db.queryOne('SELECT id FROM companies ORDER BY is_default DESC, id LIMIT 1'))?.id;
   if (!cid) return res.status(400).json({ error: '회사 정보가 없습니다.' });
+  const val = !!auto_approve;
   try {
-    await db.run(
-      'INSERT INTO company_settings (company_id, auto_approve) VALUES ($1, $2) ON CONFLICT (company_id) DO UPDATE SET auto_approve = $2',
-      [cid, !!auto_approve]
-    );
-    res.json({ auto_approve: !!auto_approve });
+    const updated = await db.run('UPDATE company_settings SET auto_approve = $2 WHERE company_id = $1', [cid, val]);
+    if (updated.rowCount === 0) {
+      await db.run('INSERT INTO company_settings (company_id, auto_approve) VALUES ($1, $2)', [cid, val]);
+    }
+    res.json({ auto_approve: val });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -11,7 +11,6 @@ export default function AdminCompany() {
   const [editForm, setEditForm] = useState({ ...EMPTY });
   const [adding, setAdding] = useState(false);
   const [addForm, setAddForm] = useState({ name: '' });
-  const [autoApprove, setAutoApprove] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -22,7 +21,6 @@ export default function AdminCompany() {
       const data = await api.getAdminCompaniesWithSettings();
       const list = data?.companies ?? data;
       setCompanies(Array.isArray(list) ? list : []);
-      setAutoApprove(data?.auto_approve ?? false);
     } catch (e) {
       alert(e?.message || '로드 실패');
     } finally {
@@ -120,27 +118,6 @@ export default function AdminCompany() {
     }
   };
 
-  const saveAutoApprove = async () => {
-    const defaultCompany = companies.find(c => c.is_default);
-    const cid = defaultCompany?.id ?? companies[0]?.id;
-    if (!cid) {
-      alert('대표 회사를 먼저 등록하세요.');
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.updateCompanySettings({ company_id: cid, auto_approve: autoApprove });
-      alert('저장되었습니다.');
-      load();
-    } catch (err) {
-      alert(err?.message || '저장 실패');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const defaultCompany = companies.find(c => c.is_default) || companies[0];
-
   return (
     <div className="admin-page">
       <ProgressBar loading={loading || saving} />
@@ -214,19 +191,6 @@ export default function AdminCompany() {
           ))}
         </ul>
         {companies.length === 0 && !adding && <p className="desc">등록된 회사가 없습니다. 회사 추가 버튼을 눌러 등록하세요.</p>}
-      </section>
-
-      <section className="card">
-        <h3>시스템 설정 (대표 회사 기준)</h3>
-        <div className="form-row checkbox-label" style={{ marginTop: '0.5rem' }}>
-          <label>
-            <input type="checkbox" checked={autoApprove} onChange={e => setAutoApprove(e.target.checked)} />
-            자동승인 (결재자 없이 제출 시 즉시 승인)
-          </label>
-        </div>
-        <button className="btn btn-primary" onClick={saveAutoApprove} disabled={saving || !defaultCompany} style={{ marginTop: '0.5rem' }}>
-          {saving ? '저장 중...' : '저장'}
-        </button>
       </section>
     </div>
   );

@@ -7,7 +7,9 @@ export default function AdminApprovalSequence() {
   const [sequences, setSequences] = useState([]);
   const [roles, setRoles] = useState([]);
   const [companyId, setCompanyId] = useState(null);
+  const [autoApprove, setAutoApprove] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [addRole, setAddRole] = useState('');
 
   const load = async () => {
@@ -18,6 +20,7 @@ export default function AdminApprovalSequence() {
       setRoles(Array.isArray(data?.roles) ? data.roles : []);
       setCompanyId(data?.company?.id ?? null);
       setSequences(Array.isArray(data?.sequences) ? data.sequences : []);
+      setAutoApprove(data?.auto_approve ?? false);
     } catch (e) {
       alert(e.message || '로드 실패');
     } finally {
@@ -70,6 +73,23 @@ export default function AdminApprovalSequence() {
     }
   };
 
+  const saveAutoApprove = async () => {
+    if (!companyId) {
+      alert('회사 정보가 없습니다. 회사 등록을 먼저 완료하세요.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.updateCompanySettings({ company_id: companyId, auto_approve: autoApprove });
+      alert('저장되었습니다.');
+      load();
+    } catch (err) {
+      alert(err.message || '저장 실패');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="admin-page">
       <ProgressBar loading={loading} />
@@ -104,6 +124,19 @@ export default function AdminApprovalSequence() {
         </ul>
         {sequences.length === 0 && <p className="desc">역할을 추가하여 결재 순서를 설정하세요.</p>}
         <button className="btn btn-primary" onClick={save} disabled={loading} style={{ marginTop: '1rem' }}>저장</button>
+      </section>
+
+      <section className="card" style={{ marginTop: '1rem' }}>
+        <h3>자동승인</h3>
+        <div className="form-row checkbox-label" style={{ marginTop: '0.5rem' }}>
+          <label>
+            <input type="checkbox" checked={autoApprove} onChange={e => setAutoApprove(e.target.checked)} />
+            자동승인 (결재자 없이 제출 시 즉시 승인)
+          </label>
+        </div>
+        <button className="btn btn-primary" onClick={saveAutoApprove} disabled={saving || !companyId} style={{ marginTop: '0.5rem' }}>
+          {saving ? '저장 중...' : '저장'}
+        </button>
       </section>
     </div>
   );
