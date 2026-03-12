@@ -2195,9 +2195,34 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       `, params);
     }
     const cardLabels = {};
+    const digitsOnly = (s) => (s || '').replace(/\D/g, '');
+    const addLabel = (cardNo, label) => {
+      if (!cardNo || !label) return;
+      const trimmed = String(cardNo).trim();
+      if (!cardLabels[trimmed]) cardLabels[trimmed] = label;
+      const digits = digitsOnly(cardNo);
+      if (digits && !cardLabels[digits]) cardLabels[digits] = label;
+    };
     const ucRows = await db.query('SELECT card_no, label FROM user_cards');
-    ucRows.forEach(r => { if (r.card_no && !cardLabels[r.card_no]) cardLabels[r.card_no] = r.label; });
+    ucRows.forEach(r => addLabel(r.card_no, r.label));
+    const ccRows = await db.query('SELECT card_no, label FROM corporate_cards');
+    ccRows.forEach(r => addLabel(r.card_no, r.label));
+    const getCardLabel = (cardNo) => {
+      if (!cardNo || cardNo === '__nocard__') return null;
+      const t = String(cardNo).trim();
+      const d = digitsOnly(cardNo);
+      if (d.includes('4661')) return 'KB법인카드';
+      if (d.includes('0822')) return '신한법인카드';
+      if (cardLabels[t]) return cardLabels[t];
+      if (cardLabels[d]) return cardLabels[d];
+      return null;
+    };
     const maskCard = (c) => c ? String(c).replace(/(\d{4})-(\d{4})-(\d{4})-(\d+)/, '$1-$2-$3-****') : '-';
+    const last4 = (cardNo) => {
+      if (!cardNo || cardNo === '__nocard__') return '';
+      const digits = String(cardNo).replace(/\D/g, '');
+      return digits.length >= 4 ? digits.slice(-4) : digits;
+    };
     const isDisplayCardFormat = (c) => c && /^\d{4}-\d{4}-\d{4}-\d+$/.test(String(c).trim());
     const formatDateKor = (dStr) => {
       if (!dStr) return '';
@@ -2361,8 +2386,9 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       const list = byCard[c] || [];
       const totalCard = list.reduce((s, i) => s + (i.card_amount || 0), 0);
       const first = list[0];
-      const tabLabel = (c !== '__nocard__' && isDisplayCardFormat(c)) ? maskCard(c) : (c !== '__nocard__' ? (cardLabels[c] || '미지정') : '미지정');
-      const tabName = c !== '__nocard__' ? tabLabel : '미지정카드';
+      const tabLabel = (c !== '__nocard__' && isDisplayCardFormat(c)) ? maskCard(c) : (c !== '__nocard__' ? (getCardLabel(c) || '미지정') : '미지정');
+      const suffix = last4(c);
+      const tabName = c !== '__nocard__' ? (suffix ? `${tabLabel} ${suffix}` : tabLabel) : '미지정카드';
       addSheet(wb, list, tabName, c !== '__nocard__' ? c : null, first ? `${first.user_name || ''} (${first.project_name || ''})` : null, totalCard, first?.user_name || '');
     }
     if (cashItems.length > 0) {
