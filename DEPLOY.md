@@ -12,7 +12,7 @@ Supabase 대시보드 → Database Settings → Connection string → **Transact
 postgres://postgres.xxxxx:[비밀번호]@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres
 ```
 
-Vercel에 `DATABASE_URL` 또는 `POSTGRES_URL`로 저장. (자동으로 `?workaround=supabase-pooler.vercel` 추가됨)
+Vercel에 `DATABASE_URL` 또는 `POSTGRES_URL`로 저장. (Vercel에서 자동으로 `?pgbouncer=true&workaround=supabase-pooler.vercel` 추가됨)
 
 ### 방법 2: 개별 변수 사용
 
