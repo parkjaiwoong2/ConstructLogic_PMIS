@@ -2225,12 +2225,19 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       }
     };
 
+    const usedNames = new Set();
     const addSheet = (wb, sheetItems, tabName, cardNoForHeader, userProjectForHeader, totalCardForHeader, submitterName) => {
-      const safeTabName = tabName.replace(/[\\/:*?"<>|]/g, '-').slice(0, 31);
+      let safeTabName = tabName.replace(/[\\/:*?"<>|]/g, '-').slice(0, 31);
+      let n = 1;
+      while (usedNames.has(safeTabName)) {
+        const suffix = ` (${++n})`;
+        safeTabName = (tabName.replace(/[\\/:*?"<>|]/g, '-').slice(0, 31 - suffix.length) + suffix).slice(0, 31);
+      }
+      usedNames.add(safeTabName);
       const ws = wb.addWorksheet(safeTabName, { views: [{ showGridLines: true }] });
       ws.columns = [
         { width: 12 }, { width: 18 }, { width: 14 }, { width: 28 },
-        { width: 12 }, { width: 12 }, { width: 14 }, { width: 16 }, { width: 8 }, { width: 8 },
+        { width: 12 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 8 },
       ];
 
       const cardVal = cardNoForHeader != null ? (isDisplayCardFormat(cardNoForHeader) ? maskCard(cardNoForHeader) : cardNoForHeader) : '';
