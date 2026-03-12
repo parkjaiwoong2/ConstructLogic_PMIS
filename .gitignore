@@ -3,7 +3,6 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 client/dist/
-public/
 .env
 .env.local
 .DS_Store
