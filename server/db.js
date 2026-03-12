@@ -9,8 +9,7 @@ function createPool() {
   if (connStr) {
     const usePooler = connStr.includes('pooler.supabase.com');
     const sep = connStr.includes('?') ? '&' : '?';
-    let params = usePooler ? 'pgbouncer=true' : '';
-    if (isVercel && usePooler) params += (params ? '&' : '') + 'workaround=supabase-pooler.vercel';
+    const params = usePooler ? 'pgbouncer=true' : '';
     const url = params ? connStr + sep + params : connStr;
     return new Pool({
       connectionString: url,
@@ -21,7 +20,7 @@ function createPool() {
     });
   }
   const base = `postgresql://${process.env.DB_USER || 'postgres.lhnytsihdfsgksvoahix'}:${encodeURIComponent(process.env.DB_PASSWORD || '')}@${process.env.DB_HOST || 'aws-1-ap-southeast-2.pooler.supabase.com'}:${process.env.DB_PORT || '6543'}/${process.env.DB_NAME || 'postgres'}`;
-  const connectionString = base + '?pgbouncer=true' + (isVercel ? '&workaround=supabase-pooler.vercel' : '');
+  const connectionString = base + '?pgbouncer=true';
   return new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },

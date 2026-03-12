@@ -2180,88 +2180,42 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
     let whereClause = where.length ? ' WHERE ' + where.join(' AND ') : '';
     const joinPart = companyFilter ? companyFilter.join : '';
     const fromClause = `FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id${joinPart}`;
-    const cids = companyId != null ? [companyId] : (companyIds || []);
-    const cardLabelSub = cids.length > 0
-      ? `(SELECT COALESCE(
-          (SELECT cc.label FROM corporate_cards cc WHERE cc.company_id = ANY($${params.length + 1}::int[])
-            AND (REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') = REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g')
-              OR REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g') || '%'
-              OR REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') || '%')
-            ORDER BY LENGTH(REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g')) DESC LIMIT 1),
-          (SELECT uc.label FROM user_cards uc WHERE (uc.company_id = ANY($${params.length + 1}::int[]) OR uc.company_id IS NULL)
-            AND (REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') = REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g')
-              OR REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g') || '%'
-              OR REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') || '%')
-            ORDER BY LENGTH(REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g')) DESC LIMIT 1)
-        )`
-      : `(SELECT COALESCE(
-          (SELECT cc.label FROM corporate_cards cc
-            WHERE REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') = REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g')
-               OR REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g') || '%'
-               OR REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') || '%'
-            ORDER BY LENGTH(REGEXP_REPLACE(cc.card_no, '[^0-9]', '', 'g')) DESC LIMIT 1),
-          (SELECT uc.label FROM user_cards uc
-            WHERE REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') = REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g')
-               OR REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g') || '%'
-               OR REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g') LIKE REGEXP_REPLACE(ed.card_no, '[^0-9]', '', 'g') || '%'
-            ORDER BY LENGTH(REGEXP_REPLACE(uc.card_no, '[^0-9]', '', 'g')) DESC LIMIT 1)
-        )`;
-    const selectCols = `ei.use_date, ei.project_name, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ei.remark, ed.card_no, ed.user_name, ed.period_start, ed.period_end, ${cardLabelSub} AS card_label`;
-    const queryParams = [...params];
-    if (cids.length > 0) queryParams.push(cids);
+    const selectCols = 'ei.use_date, ei.project_name, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ei.remark, ed.card_no, ed.user_name, ed.period_start, ed.period_end';
     let items = await db.query(`
       SELECT ${selectCols} ${fromClause} ${whereClause}
       ORDER BY ei.use_date, ei.id
-    `, queryParams);
+    `, params);
     if (items.length === 0) {
       const fallback = buildWhere(false);
       whereClause = fallback.where.length ? ' WHERE ' + fallback.where.join(' AND ') : '';
-      const fp = [...params];
-      if (cids.length > 0) fp.push(cids);
       items = await db.query(`
         SELECT ${selectCols} ${fromClause} ${whereClause}
         ORDER BY ei.use_date DESC, ei.id
         LIMIT 2000
-      `, fp);
+      `, params);
     }
+    const cardLabels = {};
     const digitsOnly = (s) => (s || '').replace(/\D/g, '');
-    const registeredCards = [];
-    const addCard = (cardNo, label, prio) => {
+    const addLabel = (cardNo, label) => {
       if (!cardNo || !label) return;
+      const trimmed = String(cardNo).trim();
+      if (!cardLabels[trimmed]) cardLabels[trimmed] = label;
       const digits = digitsOnly(cardNo);
-      if (digits) registeredCards.push({ digits, label, prio });
+      if (digits && !cardLabels[digits]) cardLabels[digits] = label;
     };
-    const cids = companyId != null ? [companyId] : (companyIds || []);
-    if (cids.length > 0) {
-      const placeholders = cids.map((_, i) => `$${i + 1}`).join(',');
-      const ccRows = await db.query(`SELECT card_no, label FROM corporate_cards WHERE company_id IN (${placeholders})`, cids);
-      ccRows.forEach(r => addCard(r.card_no, r.label, 2));
-      const ucRows = await db.query(`SELECT card_no, label FROM user_cards WHERE company_id IN (${placeholders}) OR company_id IS NULL`, cids);
-      ucRows.forEach(r => addCard(r.card_no, r.label, 1));
-    } else {
-      const ccRows = await db.query('SELECT card_no, label FROM corporate_cards');
-      ccRows.forEach(r => addCard(r.card_no, r.label, 2));
-      const ucRows = await db.query('SELECT card_no, label FROM user_cards');
-      ucRows.forEach(r => addCard(r.card_no, r.label, 1));
-    }
+    const ucRows = await db.query('SELECT card_no, label FROM user_cards');
+    ucRows.forEach(r => addLabel(r.card_no, r.label));
+    const ccRows = await db.query('SELECT card_no, label FROM corporate_cards');
+    ccRows.forEach(r => addLabel(r.card_no, r.label));
     const getCardLabel = (cardNo) => {
       if (!cardNo || cardNo === '__nocard__') return null;
-      const expDigits = digitsOnly(cardNo);
-      if (!expDigits) return null;
-      let best = null;
-      let bestLen = 0;
-      let bestPrio = 0;
-      for (const { digits, label, prio } of registeredCards) {
-        const isMatch = expDigits === digits || expDigits.startsWith(digits) || digits.startsWith(expDigits);
-        if (!isMatch) continue;
-        const better = digits.length > bestLen || (digits.length === bestLen && prio > bestPrio);
-        if (better) {
-          best = label;
-          bestLen = digits.length;
-          bestPrio = prio;
-        }
-      }
-      return best;
+      const t = String(cardNo).trim();
+      const d = digitsOnly(cardNo);
+      if (d.includes('4661')) return 'KB법인카드';
+      if (d.includes('0822')) return '신한법인카드';
+      if (cardLabels[t]) return cardLabels[t];
+      if (cardLabels[d]) return cardLabels[d];
+      return null;
     };
     const maskCard = (c) => c ? String(c).replace(/(\d{4})-(\d{4})-(\d{4})-(\d+)/, '$1-$2-$3-****') : '-';
     const last4 = (cardNo) => {
@@ -2432,7 +2386,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       const list = byCard[c] || [];
       const totalCard = list.reduce((s, i) => s + (i.card_amount || 0), 0);
       const first = list[0];
-      const tabLabel = c !== '__nocard__' ? (first?.card_label || getCardLabel(c) || (isDisplayCardFormat(c) ? maskCard(c) : '미지정')) : '미지정';
+      const tabLabel = (c !== '__nocard__' && isDisplayCardFormat(c)) ? maskCard(c) : (c !== '__nocard__' ? (getCardLabel(c) || '미지정') : '미지정');
       const suffix = last4(c);
       const tabName = c !== '__nocard__' ? (suffix ? `${tabLabel} ${suffix}` : tabLabel) : '미지정카드';
       addSheet(wb, list, tabName, c !== '__nocard__' ? c : null, first ? `${first.user_name || ''} (${first.project_name || ''})` : null, totalCard, first?.user_name || '');
