@@ -96,6 +96,10 @@ export const api = {
   login: (body) => fetchJson(`${API}/auth/login`, { method: 'POST', body: JSON.stringify(body) }),
   signup: (body) => fetchJson(`${API}/auth/signup`, { method: 'POST', body: JSON.stringify(body) }),
   authMe: () => fetchJson(`${API}/auth/me`),
+  getSubscriptionPlans: () => fetchJson(`${API}/subscription-plans`),
+  createSubscriptionPlan: (body) => fetchJson(`${API}/admin/subscription-plans`, { method: 'POST', body: JSON.stringify(body) }),
+  updateSubscriptionPlan: (id, body) => fetchJson(`${API}/admin/subscription-plans/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteSubscriptionPlan: (id) => fetchJson(`${API}/admin/subscription-plans/${id}`, { method: 'DELETE' }),
   getCompanies: (params) => {
     const q = params && Object.keys(params).length
       ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v != null && v !== ''))).toString()

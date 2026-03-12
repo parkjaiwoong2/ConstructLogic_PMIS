@@ -27,6 +27,7 @@ import AdminCompanySuper from './pages/admin/AdminCompanySuper';
 import AdminSuper from './pages/admin/AdminSuper';
 import CardSettlement from './pages/CardSettlement';
 import CardManagement from './pages/CardManagement';
+import Pricing from './pages/Pricing';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
@@ -52,6 +53,7 @@ export default function App() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/" element={<AppGate />}>
         <Route index element={<ProtectedRoute path="/"><Dashboard /></ProtectedRoute>} />
+        <Route path="pricing" element={<Pricing />} />
         <Route path="dashboard/detail" element={<ProtectedRoute path="/"><DashboardDetail /></ProtectedRoute>} />
         <Route path="expense/new" element={<ProtectedRoute path="/expense/new"><ExpenseNew /></ProtectedRoute>} />
         <Route path="expense/:id/edit" element={<ProtectedRoute path="/expense/new"><ExpenseNew /></ProtectedRoute>} />

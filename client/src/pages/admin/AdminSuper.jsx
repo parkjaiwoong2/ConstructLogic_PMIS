@@ -2,12 +2,14 @@ import { useState } from 'react';
 import MastersSuper from './MastersSuper';
 import RolePermissionsSuper from './RolePermissionsSuper';
 import AdminCompanySuper from './AdminCompanySuper';
+import AdminSubscriptionPlans from './AdminSubscriptionPlans';
 import './Admin.css';
 
 const TABS = [
   { id: 'masters', label: '마스터관리', component: MastersSuper },
   { id: 'roles', label: '역할관리', component: RolePermissionsSuper },
   { id: 'company', label: '회사관리', component: AdminCompanySuper },
+  { id: 'subscription', label: '요금제관리', component: AdminSubscriptionPlans },
 ];
 
 export default function AdminSuper() {

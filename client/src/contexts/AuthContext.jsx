@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [menus, setMenus] = useState([]);
   const [company, setCompany] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadAuth = async () => {
@@ -15,19 +16,22 @@ export function AuthProvider({ children }) {
       setUser(null);
       setMenus([]);
       setCompany(null);
+      setSubscription(null);
       setLoading(false);
       return;
     }
     try {
-      const { user: u, menus: m, company: c } = await api.authMe();
+      const { user: u, menus: m, company: c, subscription: s } = await api.authMe();
       setUser(u);
       setMenus(m || []);
       setCompany(c || null);
+      setSubscription(s || null);
     } catch {
       localStorage.removeItem('auth_token');
       setUser(null);
       setMenus([]);
       setCompany(null);
+      setSubscription(null);
     } finally {
       setLoading(false);
     }
@@ -76,7 +80,7 @@ export function AuthProvider({ children }) {
   })();
 
   return (
-    <AuthContext.Provider value={{ user, menus, company, loading, login, logout, loadAuth, canAccess, firstAccessiblePath }}>
+    <AuthContext.Provider value={{ user, menus, company, subscription, loading, login, logout, loadAuth, canAccess, firstAccessiblePath }}>
       {children}
     </AuthContext.Provider>
   );

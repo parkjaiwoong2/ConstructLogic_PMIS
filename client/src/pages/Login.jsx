@@ -43,11 +43,11 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-brand">
+      <Link to="/" className="login-brand" title="메인으로">
         {company.logo_url && <img src={company.logo_url} alt="" className="login-logo" />}
         <h1 className="login-company-name">{company.name}</h1>
         <p className="login-tagline">건설 프로젝트 관리 정보 시스템</p>
-      </div>
+      </Link>
       <form className="login-form" onSubmit={handleSubmit}>
         <h2>로그인</h2>
         {error && <div className="login-error">{error}</div>}

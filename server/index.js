@@ -43,10 +43,9 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/signup', async (req, res) => {
-  const { email, password, name, project_id } = req.body;
+  const { email, password, name, project_id, plan_id } = req.body;
   if (!email?.trim() || !password) return res.status(400).json({ error: '이메일과 비밀번호를 입력하세요.' });
   if (password.length < 4) return res.status(400).json({ error: '비밀번호는 4자 이상이어야 합니다.' });
-  if (!project_id) return res.status(400).json({ error: '현장을 선택하세요.' });
   try {
     let companyId = (await db.queryOne('SELECT id FROM companies WHERE is_default = true'))?.id;
     if (!companyId) companyId = (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
@@ -106,7 +105,31 @@ app.get('/api/auth/me', async (req, res) => {
       menus = (rows || []).map(r => r.menu_path);
     }
     const company = companyRow ? { ...COMPANY_DEFAULTS, ...companyRow } : COMPANY_DEFAULTS;
-    res.json({ user, menus: [...new Set(menus)], company });
+    let subscription = null;
+    if (repCompanyId) {
+      const subRow = await db.queryOne(
+        `SELECT cs.id, cs.status, cs.started_at, cs.ends_at, sp.code, sp.name, sp.price_monthly, sp.max_users, sp.features_json, sp.is_trial, sp.trial_days
+         FROM company_subscriptions cs
+         JOIN subscription_plans sp ON sp.id = cs.plan_id
+         WHERE cs.company_id = $1 AND cs.status = 'active'`,
+        [repCompanyId]
+      );
+      if (subRow) {
+        subscription = { plan: subRow.code, planName: subRow.name, maxUsers: subRow.max_users, status: subRow.status, startedAt: subRow.started_at, endsAt: subRow.ends_at, isTrial: subRow.is_trial, trialDays: subRow.trial_days };
+      }
+    }
+    res.json({ user, menus: [...new Set(menus)], company, subscription });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/subscription-plans', async (req, res) => {
+  try {
+    const rows = await db.query(`SELECT id, code, name, description, price_monthly, setup_fee, max_users,
+      features_json, limits_json, display_order, is_trial, trial_days, is_recommended, plan_type
+      FROM subscription_plans ORDER BY display_order, id`);
+    res.json(rows || []);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2055,6 +2078,75 @@ app.put('/api/admin/company-settings', requireAdmin, async (req, res) => {
       await db.run('INSERT INTO company_settings (company_id, auto_approve) VALUES ($1, $2)', [cid, val]);
     }
     res.json({ auto_approve: val });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 요금제 관리 (슈퍼관리자 전용)
+app.post('/api/admin/subscription-plans', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 요금제를 등록할 수 있습니다.' });
+  const { code, name, description, price_monthly, setup_fee, max_users, features_json, limits_json, display_order, is_trial, trial_days, is_recommended, plan_type } = req.body;
+  if (!code?.trim() || !name?.trim()) return res.status(400).json({ error: '코드와 이름은 필수입니다.' });
+  try {
+    const r = await db.run(
+      `INSERT INTO subscription_plans (code, name, description, price_monthly, setup_fee, max_users, features_json, limits_json, display_order, is_trial, trial_days, is_recommended, plan_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      [code.trim(), name.trim(), description?.trim() || null, parseInt(price_monthly, 10) || 0, parseInt(setup_fee, 10) || 0,
+        parseInt(max_users, 10) || 10, JSON.stringify(features_json || []), JSON.stringify(limits_json || {}),
+        parseInt(display_order, 10) || 99, !!is_trial, is_trial ? (parseInt(trial_days, 10) || 14) : null,
+        !!is_recommended, (plan_type === 'unlimited' ? 'unlimited' : 'basic')]
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: '이미 존재하는 코드입니다.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/admin/subscription-plans/:id', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 요금제를 수정할 수 있습니다.' });
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  const { code, name, description, price_monthly, setup_fee, max_users, features_json, limits_json, display_order, is_trial, trial_days, is_recommended, plan_type } = req.body;
+  try {
+    const row = await db.queryOne('SELECT * FROM subscription_plans WHERE id = $1', [id]);
+    if (!row) return res.status(404).json({ error: '요금제를 찾을 수 없습니다.' });
+    const c = code?.trim() ?? row.code;
+    const n = name?.trim() ?? row.name;
+    const desc = description !== undefined ? (description?.trim() || null) : row.description;
+    const pm = price_monthly !== undefined ? (parseInt(price_monthly, 10) || 0) : row.price_monthly;
+    const sf = setup_fee !== undefined ? (parseInt(setup_fee, 10) || 0) : (row.setup_fee ?? 0);
+    const mu = max_users !== undefined ? (parseInt(max_users, 10) || 10) : row.max_users;
+    const fj = features_json !== undefined ? JSON.stringify(Array.isArray(features_json) ? features_json : []) : JSON.stringify(row.features_json || []);
+    const lj = limits_json !== undefined ? JSON.stringify(typeof limits_json === 'object' ? limits_json : {}) : JSON.stringify(row.limits_json || {});
+    const do_ = display_order !== undefined ? parseInt(display_order, 10) : (row.display_order ?? 99);
+    const it = is_trial !== undefined ? !!is_trial : row.is_trial;
+    const td = is_trial ? (parseInt(trial_days, 10) || 14) : null;
+    const ir = is_recommended !== undefined ? !!is_recommended : (row.is_recommended ?? false);
+    const pt = plan_type === 'unlimited' ? 'unlimited' : 'basic';
+    await db.run(
+      `UPDATE subscription_plans SET code=$2, name=$3, description=$4, price_monthly=$5, setup_fee=$6, max_users=$7,
+       features_json=$8, limits_json=$9, display_order=$10, is_trial=$11, trial_days=$12, is_recommended=$13, plan_type=$14 WHERE id=$1`,
+      [id, c, n, desc, pm, sf, mu, fj, lj, do_, it, td, ir, pt]
+    );
+    const updated = await db.queryOne('SELECT * FROM subscription_plans WHERE id = $1', [id]);
+    res.json(updated);
+  } catch (e) {
+    if (e.code === '23505') return res.status(400).json({ error: '이미 존재하는 코드입니다.' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/admin/subscription-plans/:id', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 요금제를 삭제할 수 있습니다.' });
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
+  try {
+    const used = await db.queryOne('SELECT 1 FROM company_subscriptions WHERE plan_id = $1 LIMIT 1', [id]);
+    if (used) return res.status(400).json({ error: '사용 중인 요금제는 삭제할 수 없습니다.' });
+    await db.run('DELETE FROM subscription_plans WHERE id = $1', [id]);
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
