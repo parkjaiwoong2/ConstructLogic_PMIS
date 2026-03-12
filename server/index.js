@@ -2194,28 +2194,38 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
         LIMIT 2000
       `, params);
     }
-    const cardLabels = {};
     const digitsOnly = (s) => (s || '').replace(/\D/g, '');
-    const addLabel = (cardNo, label) => {
+    const registeredCards = [];
+    const addCard = (cardNo, label, prio) => {
       if (!cardNo || !label) return;
-      const trimmed = String(cardNo).trim();
-      if (!cardLabels[trimmed]) cardLabels[trimmed] = label;
       const digits = digitsOnly(cardNo);
-      if (digits && !cardLabels[digits]) cardLabels[digits] = label;
+      if (digits) registeredCards.push({ digits, label, prio });
     };
-    const ucRows = await db.query('SELECT card_no, label FROM user_cards');
-    ucRows.forEach(r => addLabel(r.card_no, r.label));
-    const ccRows = await db.query('SELECT card_no, label FROM corporate_cards');
-    ccRows.forEach(r => addLabel(r.card_no, r.label));
+    const cids = companyId != null ? [companyId] : (companyIds || []);
+    if (cids.length > 0) {
+      const ph = cids.map((_, i) => `$${i + 1}`).join(',');
+      const ccRows = await db.query('SELECT card_no, label FROM corporate_cards WHERE company_id IN (' + ph + ')', cids);
+      ccRows.forEach(r => addCard(r.card_no, r.label, 2));
+      const ucRows = await db.query('SELECT card_no, label FROM user_cards WHERE company_id IN (' + ph + ') OR company_id IS NULL', cids);
+      ucRows.forEach(r => addCard(r.card_no, r.label, 1));
+    } else {
+      const ccRows = await db.query('SELECT card_no, label FROM corporate_cards');
+      ccRows.forEach(r => addCard(r.card_no, r.label, 2));
+      const ucRows = await db.query('SELECT card_no, label FROM user_cards');
+      ucRows.forEach(r => addCard(r.card_no, r.label, 1));
+    }
     const getCardLabel = (cardNo) => {
       if (!cardNo || cardNo === '__nocard__') return null;
-      const t = String(cardNo).trim();
-      const d = digitsOnly(cardNo);
-      if (d.includes('4661')) return 'KB법인카드';
-      if (d.includes('0822')) return '신한법인카드';
-      if (cardLabels[t]) return cardLabels[t];
-      if (cardLabels[d]) return cardLabels[d];
-      return null;
+      const expDigits = digitsOnly(cardNo);
+      if (!expDigits) return null;
+      let best = null, bestLen = 0, bestPrio = 0;
+      for (const { digits, label, prio } of registeredCards) {
+        const ok = expDigits === digits || expDigits.startsWith(digits) || digits.startsWith(expDigits);
+        if (!ok) continue;
+        const better = digits.length > bestLen || (digits.length === bestLen && prio > bestPrio);
+        if (better) { best = label; bestLen = digits.length; bestPrio = prio; }
+      }
+      return best;
     };
     const maskCard = (c) => c ? String(c).replace(/(\d{4})-(\d{4})-(\d{4})-(\d+)/, '$1-$2-$3-****') : '-';
     const last4 = (cardNo) => {
