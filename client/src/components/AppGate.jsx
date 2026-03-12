@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import Layout from '../Layout';
 import Main from '../pages/Main';
 import Pricing from '../pages/Pricing';
+import ServiceIntro from '../pages/ServiceIntro';
+import Support from '../pages/Support';
 
 export default function AppGate() {
   const { user, loading } = useAuth();
@@ -14,6 +16,8 @@ export default function AppGate() {
   if (!user) {
     if (path === '/') return <Main />;
     if (path === '/pricing') return <Pricing />;
+    if (path === '/service') return <ServiceIntro />;
+    if (path === '/support') return <Support />;
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

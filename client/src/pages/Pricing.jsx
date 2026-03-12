@@ -39,9 +39,9 @@ export default function Pricing() {
           <div className="pricing-header-inner">
             <Link to="/" className="pricing-logo" title="메인으로">Construct Logic</Link>
             <nav className="pricing-nav">
-              <Link to="/#service">서비스소개</Link>
+              <Link to="/service">서비스소개</Link>
               <Link to="/pricing" className="active">요금안내</Link>
-              <Link to="/#support">지원</Link>
+              <Link to="/support">지원</Link>
             </nav>
             <div className="pricing-header-actions">
               <Link to="/login" className="pricing-header-link">로그인</Link>

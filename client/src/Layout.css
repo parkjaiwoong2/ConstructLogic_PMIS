@@ -46,7 +46,7 @@
   width: 220px;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #1e5a8e 0%, #0d3d6b 100%);
+  background: linear-gradient(180deg, #1e3a5f 0%, #0f172a 100%);
   color: #fff;
   flex-shrink: 0;
   transition: transform 0.25s ease;
@@ -161,8 +161,8 @@
 .layout-footer {
   flex-shrink: 0;
   padding: 1.25rem 2rem;
-  border-top: 1px solid rgba(30, 90, 142, 0.25);
-  background: linear-gradient(180deg, #5c8fb8 0%, #3d6d94 100%);
+  border-top: 1px solid rgba(30, 58, 95, 0.25);
+  background: linear-gradient(180deg, #334155 0%, #1e3a5f 100%);
   color: rgba(255, 255, 255, 0.95);
   font-size: 0.8rem;
   line-height: 1.6;

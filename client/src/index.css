@@ -1,10 +1,11 @@
+/* 메인 화면 기준 색상·디자인 통일 */
 :root {
-  --color-bg: #f5f6f8;
+  --color-bg: #f8fafc;
   --color-surface: #ffffff;
-  --color-border: #e2e5eb;
-  --color-primary: #1e5a8e;
-  --color-primary-light: #2a7ab8;
-  --color-accent: #0d9488;
+  --color-border: #e2e8f0;
+  --color-primary: #1e3a5f;
+  --color-primary-light: #2563eb;
+  --color-accent: #2563eb;
   --color-text: #1f2937;
   --color-text-muted: #6b7280;
   --color-success: #059669;

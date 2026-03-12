@@ -1,0 +1,99 @@
+/* Main 페이지 디자인 기준 통일 */
+.support-page {
+  padding: 2rem 1rem 3rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.support-standalone {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.support-header {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  margin: -2rem -1rem 2rem -1rem;
+  padding: 0.75rem 1.5rem;
+}
+.support-header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+.support-logo {
+  font-weight: 700;
+  color: #1e3a5f;
+  text-decoration: none;
+  font-size: 1.2rem;
+}
+.support-logo:hover { color: #2563eb; }
+.support-nav {
+  display: flex;
+  gap: 1.5rem;
+}
+.support-nav a {
+  color: #475569;
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.support-nav a:hover { color: #1e3a5f; }
+.support-nav a.active {
+  color: #1e3a5f;
+  font-weight: 700;
+}
+.support-header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+.support-header-link {
+  color: #475569;
+  text-decoration: none;
+}
+.support-header-link:hover { color: #1e3a5f; }
+.support-header-btn {
+  padding: 0.5rem 1.25rem;
+  background: #2563eb;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.support-header-btn:hover { background: #1d4ed8; }
+
+.support-content {
+  min-height: 50vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.support-coming {
+  text-align: center;
+  padding: 3rem;
+}
+.support-coming-badge {
+  display: inline-block;
+  padding: 0.6rem 1.5rem;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 1.1rem;
+  font-weight: 700;
+  border-radius: 999px;
+  margin-bottom: 1rem;
+}
+.support-coming-desc {
+  font-size: 1rem;
+  color: #64748b;
+  margin: 0 0 1.5rem;
+}
+.support-back {
+  display: inline-block;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+}
+.support-back:hover { text-decoration: underline; }

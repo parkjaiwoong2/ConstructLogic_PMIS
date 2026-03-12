@@ -39,7 +39,8 @@
   text-decoration: none;
   font-size: 0.95rem;
 }
-.pricing-nav a:hover, .pricing-nav a.active { color: #1e3a5f; font-weight: 600; }
+.pricing-nav a:hover { color: #1e3a5f; }
+.pricing-nav a.active { color: #1e3a5f; font-weight: 700; }
 .pricing-header-actions {
   display: flex;
   gap: 1rem;

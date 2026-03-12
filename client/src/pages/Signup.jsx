@@ -21,7 +21,6 @@ export default function Signup() {
 
   useEffect(() => {
     api.getCompanies().then(c => setCompany(c ? { ...defaultCompany, ...c } : defaultCompany)).catch(() => {});
-    api.getProjects().then(p => setProjects(Array.isArray(p) ? p : [])).catch(() => setProjects([]));
   }, []);
 
   useEffect(() => {
