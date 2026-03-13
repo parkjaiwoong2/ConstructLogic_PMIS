@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const hangulRomanization = require('hangul-romanization');
 const db = require('./db');
 const auth = require('./auth');
 
@@ -833,12 +834,43 @@ function nameToCode(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_\uac00-\ud7af]/g, '') || null;
 }
 
+/** 한글명 → 영문 약어 코드 (대문자, 한글은 음절 첫글자, 영문은 단어 첫글자) */
+function nameToCodeFromName(name) {
+  if (!name || typeof name !== 'string') return null;
+  const str = name.trim();
+  if (!str) return null;
+  const abbrev = [];
+  const segments = str.split(/\s+/).filter(Boolean);
+  for (const seg of segments) {
+    const hasHangul = /[\uAC00-\uD7A3]/.test(seg);
+    if (hasHangul) {
+      for (let i = 0; i < seg.length; i++) {
+        const code = seg.charCodeAt(i);
+        if (code >= 0xAC00 && code <= 0xD7A3) {
+          const r = hangulRomanization.convert(seg[i]);
+          if (r && r[0]) abbrev.push(r[0].toUpperCase());
+        } else if (code >= 48 && code <= 57) {
+          abbrev.push(seg[i]);
+        }
+      }
+    } else {
+      const m = seg.match(/[a-zA-Z0-9]/);
+      if (m) abbrev.push(m[0].toUpperCase());
+    }
+  }
+  const s = abbrev.join('').replace(/[^A-Z0-9]/g, '');
+  return s || null;
+}
+function generateEnglishCode(prefix) {
+  return `${prefix.toUpperCase()}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+}
+
 app.post('/api/projects', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: '로그인이 필요합니다.' });
   const { name, company_id } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
   try {
-    const code = nameToCode(name.trim()) || null;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('prj');
     const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
     if (cid != null) {
       const belongs = await userBelongsToCompany(req.user.id, cid);
@@ -856,7 +888,7 @@ app.post('/api/account-items', async (req, res) => {
   const { name, company_id } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
   try {
-    const code = nameToCode(name.trim()) || `item_${Date.now()}`;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('item');
     const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
     if (cid != null) {
       const belongs = await userBelongsToCompany(req.user.id, cid);
@@ -882,7 +914,7 @@ app.put('/api/account-items/:id', async (req, res) => {
       const belongs = await userBelongsToCompany(req.user.id, row.company_id);
       if (!belongs) return res.status(403).json({ error: '소속 회사의 항목만 수정할 수 있습니다.' });
     }
-    const code = nameToCode(name.trim()) || null;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('item');
     await db.run('UPDATE account_items SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
     await db.run('UPDATE expense_items SET account_item_name=$1 WHERE account_item_id=$2', [name.trim(), id]);
     res.json({ id });
@@ -904,7 +936,7 @@ app.put('/api/projects/:id', async (req, res) => {
       const belongs = await userBelongsToCompany(req.user.id, row.company_id);
       if (!belongs) return res.status(403).json({ error: '소속 회사의 현장만 수정할 수 있습니다.' });
     }
-    const code = nameToCode(name.trim()) || null;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('prj');
     await db.run('UPDATE projects SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
     await db.run('UPDATE expense_items SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
     await db.run('UPDATE expense_documents SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
@@ -1187,7 +1219,7 @@ app.post('/api/admin/master-templates/account-items', async (req, res) => {
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
   try {
-    const code = nameToCode(name.trim()) || `tpl_item_${Date.now()}`;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('acct');
     const r = await db.run(
       'INSERT INTO master_templates_account_items (code, name, display_order) VALUES ($1, $2, 99) RETURNING id, code, name, display_order',
       [code, name.trim()]
@@ -1205,7 +1237,7 @@ app.put('/api/admin/master-templates/account-items/:id', async (req, res) => {
   const { name } = req.body;
   if (!id || isNaN(id) || !name?.trim()) return res.status(400).json({ error: 'ID 및 항목명 필수' });
   try {
-    const code = nameToCode(name.trim()) || null;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('acct');
     await db.run('UPDATE master_templates_account_items SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
     const row = await db.queryOne('SELECT id, code, name FROM master_templates_account_items WHERE id = $1', [id]);
     res.json(row || { id });
@@ -1234,7 +1266,7 @@ app.post('/api/admin/master-templates/projects', async (req, res) => {
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
   try {
-    const code = nameToCode(name.trim()) || null;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('prj');
     const r = await db.run(
       'INSERT INTO master_templates_projects (code, name) VALUES ($1, $2) RETURNING id, code, name',
       [code, name.trim()]
@@ -1252,7 +1284,7 @@ app.put('/api/admin/master-templates/projects/:id', async (req, res) => {
   const { name } = req.body;
   if (!id || isNaN(id) || !name?.trim()) return res.status(400).json({ error: 'ID 및 현장명 필수' });
   try {
-    const code = nameToCode(name.trim()) || null;
+    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('prj');
     await db.run('UPDATE master_templates_projects SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
     const row = await db.queryOne('SELECT id, code, name FROM master_templates_projects WHERE id = $1', [id]);
     res.json(row || { id });
@@ -1320,9 +1352,12 @@ async function getCompanyIdsForUserIncludingSameEmail(userId) {
   return [...new Set((rows || []).map(r => r.company_id).filter(Boolean))];
 }
 
-/** 모든 사용자: 소속 회사만 조회 (동일 이메일 다회사 계정 포함) */
+/** 모든 사용자: 소속 회사만 조회 (동일 이메일 다회사 계정 포함). 슈퍼관리자는 전체 회사 반환 */
 async function getCompaniesForUser(user) {
   if (!user?.id) return [];
+  if (user?.is_admin === true) {
+    return db.query('SELECT id, name, is_default FROM companies ORDER BY is_default DESC, id');
+  }
   const ids = await getCompanyIdsForUserIncludingSameEmail(user.id);
   if (ids.length === 0) return [];
   return db.query(
@@ -1407,14 +1442,30 @@ app.get('/api/admin/roles', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/roles', requireAdmin, async (req, res) => {
-  const { label } = req.body;
+  const { label, company_id } = req.body || {};
   if (!label?.trim()) return res.status(400).json({ error: '역할 이름을 입력하세요.' });
+  let cid = company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
+  if (!cid && req.user?.id) {
+    cid = await getUserRepresentativeCompany(req.user.id);
+  }
+  if (!cid) {
+    const def = await db.queryOne('SELECT id FROM companies ORDER BY (CASE WHEN is_default THEN 0 ELSE 1 END), id LIMIT 1');
+    cid = def?.id || null;
+  }
+  if (!cid) return res.status(400).json({ error: '회사를 선택한 후 역할을 추가하세요.' });
+  const isSuperAdmin = req.user?.is_admin === true;
+  if (!isSuperAdmin) {
+    const belongs = await userBelongsToCompany(req.user.id, cid);
+    if (!belongs) return res.status(403).json({ error: '소속 회사에만 역할을 추가할 수 있습니다.' });
+  }
   const c = nameToCode(label.trim()) || `role_${Date.now()}`;
   try {
-    const r = await db.run('INSERT INTO roles (code, label, display_order) VALUES ($1, $2, 99) RETURNING id, code, label', [c, label.trim()]);
-    res.json(r.rows[0]);
+    const r = await db.run('INSERT INTO roles (company_id, code, label, display_order) VALUES ($1, $2, $3, 99) RETURNING id, code, label, display_order', [cid, c, label.trim()]);
+    const row = r.rows[0];
+    if (!row) return res.status(500).json({ error: '역할 등록에 실패했습니다.' });
+    res.json(row);
   } catch (e) {
-    if (e.code === '23505') return res.status(400).json({ error: '이미 존재하는 역할 코드입니다.' });
+    if (e.code === '23505') return res.status(400).json({ error: '해당 회사에 이미 존재하는 역할 코드입니다.' });
     res.status(500).json({ error: e.message });
   }
 });
@@ -1438,12 +1489,22 @@ app.delete('/api/admin/roles/:id', requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
-    const row = await db.queryOne('SELECT code FROM roles WHERE id = $1', [id]);
+    const row = await db.queryOne('SELECT code, company_id FROM roles WHERE id = $1', [id]);
     if (!row) return res.status(404).json({ error: '역할을 찾을 수 없습니다.' });
+    if (row.company_id) {
+      const belongs = await userBelongsToCompany(req.user.id, row.company_id);
+      if (!belongs) return res.status(403).json({ error: '해당 회사의 역할만 삭제할 수 있습니다.' });
+    }
     if (row.code === 'admin') return res.status(400).json({ error: '관리자 역할은 삭제할 수 없습니다.' });
-    const users = await db.query('SELECT id FROM auth_users WHERE role = $1', [row.code]);
+    const users = row.company_id
+      ? await db.query(`SELECT 1 FROM auth_users au WHERE au.role = $1 AND (au.company_id = $2 OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $2)) LIMIT 1`, [row.code, row.company_id])
+      : await db.query('SELECT id FROM auth_users WHERE role = $1 LIMIT 1', [row.code]);
     if (users.length > 0) return res.status(400).json({ error: `해당 역할을 가진 사용자가 ${users.length}명 있어 삭제할 수 없습니다.` });
-    await db.run('DELETE FROM role_menus WHERE role = $1', [row.code]);
+    if (row.company_id) {
+      await db.run('DELETE FROM role_menus WHERE company_id = $1 AND role = $2', [row.company_id, row.code]);
+    } else {
+      await db.run('DELETE FROM role_menus WHERE role = $1', [row.code]);
+    }
     await db.run('DELETE FROM roles WHERE id = $1', [id]);
     res.json({ ok: true });
   } catch (e) {
@@ -1528,6 +1589,17 @@ app.post('/api/admin/super/company-with-admin', requireAdmin, async (req, res) =
       [newCompanyId, email.trim(), hash, (userName || '').trim() || (email || '').split('@')[0]]
     );
     await db.run('INSERT INTO auth_user_companies (user_id, company_id) VALUES ($1, $2) ON CONFLICT (user_id, company_id) DO NOTHING', [ur.rows[0].id, newCompanyId]);
+    const srcRoles = await db.query('SELECT code, label, display_order FROM roles WHERE company_id IS NOT NULL ORDER BY company_id, display_order LIMIT 20');
+    const rolesToCopy = (srcRoles && srcRoles.length) ? srcRoles : [
+      { code: 'admin', label: '관리자', display_order: 0 }, { code: 'author', label: '작성자', display_order: 1 },
+      { code: 'reviewer', label: '검토자', display_order: 2 }, { code: 'approver', label: '승인자', display_order: 3 }, { code: 'ceo', label: 'CEO', display_order: 4 }
+    ];
+    const seen = new Set();
+    for (const r of rolesToCopy) {
+      if (seen.has(r.code)) continue;
+      seen.add(r.code);
+      await db.run('INSERT INTO roles (company_id, code, label, display_order) VALUES ($1, $2, $3, $4) ON CONFLICT (company_id, code) DO NOTHING', [newCompanyId, r.code, r.label, r.display_order ?? 99]);
+    }
     res.json({ company: cr.rows[0], user: ur.rows[0] });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: '이미 등록된 회사명이거나 동일 회사에 이미 등록된 이메일입니다.' });
@@ -1819,17 +1891,13 @@ app.post('/api/admin/users/:id/approve', requireAdmin, async (req, res) => {
   }
 });
 
-/** 해당 회사에서 role_menus에 설정된 역할만 반환 */
+/** 해당 회사의 역할만 반환 */
 app.get('/api/admin/roles-by-company', requireAdmin, async (req, res) => {
   try {
     const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
       ? parseInt(req.query.company_id, 10) : null;
     if (!cid) return res.json([]);
-    const rows = await db.query(`
-      SELECT DISTINCT r.id, r.code, r.label, r.display_order FROM roles r
-      INNER JOIN role_menus rm ON rm.role = r.code AND rm.company_id = $1
-      ORDER BY r.display_order, r.id
-    `, [cid]);
+    const rows = await db.query('SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id', [cid]);
     res.json(rows || []);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1918,9 +1986,10 @@ app.get('/api/admin/batch/role-permissions', requireAdmin, async (req, res) => {
   try {
     const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
       ? parseInt(req.query.company_id, 10) : null;
+    // 역할은 회사별 조회 (회사 선택 시에만)
     const rolesSql = cid
-      ? 'SELECT DISTINCT r.id, r.code, r.label, r.display_order FROM roles r INNER JOIN role_menus rm ON rm.role = r.code AND rm.company_id = $1 ORDER BY r.display_order, r.id'
-      : 'SELECT id, code, label, display_order FROM roles ORDER BY display_order, id';
+      ? 'SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id'
+      : 'SELECT id, code, label, display_order FROM roles WHERE 1=0';
     const rolesParams = cid ? [cid] : [];
     const [rolesData, menuRows, companiesData] = await Promise.all([
       db.query(rolesSql, rolesParams),
@@ -1970,7 +2039,7 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
       : 'SELECT id, name FROM projects ORDER BY name';
     const projectsParams = filterCid ? [filterCid] : [];
     const rolesSql = filterCid
-      ? 'SELECT DISTINCT r.id, r.code, r.label, r.display_order FROM roles r INNER JOIN role_menus rm ON rm.role = r.code AND rm.company_id = $1 ORDER BY r.display_order, r.id'
+      ? 'SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id'
       : 'SELECT id, code, label, display_order FROM roles ORDER BY display_order, id';
     const rolesParams = filterCid ? [filterCid] : [];
 

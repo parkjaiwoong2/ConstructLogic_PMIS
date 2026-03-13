@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS approval_sequences (
   role TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 1
 );
+CREATE INDEX IF NOT EXISTS idx_approval_sequences_company ON approval_sequences(company_id, sort_order);
 
 -- 회사 설정 (자동승인)
 CREATE TABLE IF NOT EXISTS company_settings (
@@ -299,3 +300,14 @@ INSERT INTO role_menus (company_id, role, menu_path)
   WHERE menu_path IN ('/card-settlement', '/admin/corporate-cards')
   ON CONFLICT (company_id, role, menu_path) DO NOTHING;
 DELETE FROM role_menus WHERE menu_path IN ('/card-settlement', '/admin/corporate-cards');
+
+-- roles 회사별 (회사별 역할 등록/조회)
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id);
+UPDATE roles SET company_id = (SELECT id FROM companies WHERE is_default = true ORDER BY id LIMIT 1)
+WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies LIMIT 1);
+UPDATE roles SET company_id = (SELECT id FROM companies ORDER BY id LIMIT 1)
+WHERE company_id IS NULL AND EXISTS (SELECT 1 FROM companies LIMIT 1);
+ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_code_key;
+ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_company_code_key;
+ALTER TABLE roles ADD CONSTRAINT roles_company_code_key UNIQUE (company_id, code);
+CREATE INDEX IF NOT EXISTS idx_roles_company ON roles(company_id);

@@ -25,11 +25,12 @@ export default function AdminRolePermissions() {
   const [editingRole, setEditingRole] = useState(null);
   const [roleForm, setRoleForm] = useState({ adding: false, editing: null, code: '', label: '' });
 
-  const load = async () => {
+  const load = async (overrideCompanyId) => {
     setLoading(true);
     await nextTick();
+    const cid = overrideCompanyId !== undefined ? overrideCompanyId : companyId;
     try {
-      const data = await api.getAdminBatchRolePermissions(companyId || undefined);
+      const data = await api.getAdminBatchRolePermissions(cid || undefined);
       setCompanies(Array.isArray(data?.companies) ? data.companies : []);
       if (!companyId && data?.companies?.length) setCompanyId(String(data.companies.find(c => c.is_default)?.id || data.companies[0]?.id || ''));
       setRoles(Array.isArray(data?.roles) ? data.roles : []);
@@ -56,11 +57,22 @@ export default function AdminRolePermissions() {
       alert('역할 이름을 입력하세요.');
       return;
     }
+    const cid = roleForm.companyId ?? companyId;
+    if (!cid) {
+      alert('회사를 선택한 후 역할을 추가하세요.');
+      return;
+    }
+    const cidNum = parseInt(cid, 10);
+    if (isNaN(cidNum)) {
+      alert('유효한 회사를 선택해 주세요.');
+      return;
+    }
     try {
-      await api.createAdminRole({ label: roleForm.label.trim() });
+      const newRole = await api.createAdminRole({ label: roleForm.label.trim(), company_id: cidNum });
       setRoleForm({ adding: false, editing: null, code: '', label: '' });
+      setRoles(prev => [...(prev || []), { id: newRole.id, code: newRole.code, label: newRole.label, display_order: 99 }]);
       alert('역할이 등록되었습니다.');
-      load();
+      load(cidNum);
     } catch (err) {
       alert(err.message || '등록 실패');
     }
@@ -162,7 +174,7 @@ export default function AdminRolePermissions() {
             <button type="button" className="btn btn-sm btn-secondary" onClick={() => setRoleForm({ adding: false, editing: null, code: '', label: '' })}>취소</button>
           </form>
         ) : (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRoleForm({ adding: true, editing: null, code: '', label: '' })}>+ 역할 추가</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRoleForm({ adding: true, editing: null, code: '', label: '', companyId })} disabled={!companyId}>+ 역할 추가</button>
         )}
       </section>
 
