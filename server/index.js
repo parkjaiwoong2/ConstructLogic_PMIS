@@ -107,7 +107,7 @@ app.get('/api/auth/me', async (req, res) => {
       menus = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/approval-sequence', '/admin/permissions', '/admin/edit-history', '/admin/super'];
     } else if (isCompanyAdmin) {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
-      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, user.role]) : [];
+      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, 'company_admin']) : [];
       menus = (rows || []).map(r => r.menu_path);
     } else {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
@@ -128,7 +128,8 @@ app.get('/api/auth/me', async (req, res) => {
         subscription = { plan: subRow.code, planName: subRow.name, maxUsers: subRow.max_users, status: subRow.status, startedAt: subRow.started_at, endsAt: subRow.ends_at, isTrial: subRow.is_trial, trialDays: subRow.trial_days };
       }
     }
-    res.json({ user, menus: [...new Set(menus)], company, subscription });
+    const userOut = { ...user, is_admin: user.is_admin === true };
+    res.json({ user: userOut, menus: [...new Set(menus)], company, subscription });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
