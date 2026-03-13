@@ -111,6 +111,21 @@ export default function AdminUsers() {
       .catch(() => { setProjectsForCompany([]); setRolesForCompany([]); setNewProjectId(''); setNewRole(''); });
   }, [newCompanyId]);
 
+  useEffect(() => {
+    if (!filters.company_id) {
+      setProjectsForFilter([]);
+      setRolesForFilter([]);
+      return;
+    }
+    const cid = parseInt(filters.company_id, 10);
+    Promise.all([api.getProjects(cid), api.getRolesByCompany(cid)])
+      .then(([p, r]) => {
+        setProjectsForFilter(Array.isArray(p) ? p : []);
+        setRolesForFilter(Array.isArray(r) ? r : []);
+      })
+      .catch(() => { setProjectsForFilter([]); setRolesForFilter([]); });
+  }, [filters.company_id]);
+
   const handleSearch = () => {
     setPage(1);
     load(1);
