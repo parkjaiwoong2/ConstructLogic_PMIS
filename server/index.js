@@ -2029,14 +2029,12 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     }
     if (!password) return res.status(400).json({ error: '신규 등록 시 비밀번호 필수' });
     const hash = await auth.hashPassword(password);
-    const newRole = role || 'author';
-    const isSuper = isSuperAdminUser(req.user);
-    const isAdminRole = newRole === 'superAdmin' ? (isSuper ? true : false) : false;
-    if (newRole === 'superAdmin' && !isSuper) return res.status(403).json({ error: '슈퍼관리자 역할은 슈퍼관리자만 지정할 수 있습니다.' });
+    let newRole = role || 'author';
+    if (newRole === 'superAdmin') newRole = 'admin';
     const r = await db.run(
       `INSERT INTO auth_users (company_id, project_id, email, password_hash, name, role, is_admin, is_approved)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, email, name, role`,
-      [cid, project_id ? parseInt(project_id, 10) : null, email.trim(), hash, (name || '').trim() || email.split('@')[0], newRole, isAdminRole, !!is_approved]
+      [cid, project_id ? parseInt(project_id, 10) : null, email.trim(), hash, (name || '').trim() || email.split('@')[0], newRole, false, !!is_approved]
     );
     if (cid) {
       await db.run('INSERT INTO auth_user_companies (user_id, company_id) VALUES ($1, $2) ON CONFLICT (user_id, company_id) DO NOTHING', [r.rows[0].id, cid]);
@@ -2053,12 +2051,10 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
   const { name, role, password, project_id, company_id, is_approved, email } = req.body;
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
-    const newRole = role || 'author';
-    const isSuper = isSuperAdminUser(req.user);
-    const isAdminRole = newRole === 'superAdmin' ? (isSuper ? true : false) : false;
-    if (newRole === 'superAdmin' && !isSuper) return res.status(403).json({ error: '슈퍼관리자 역할은 슈퍼관리자만 지정할 수 있습니다.' });
+    let newRole = role || 'author';
+    if (newRole === 'superAdmin') newRole = 'admin';
     const updates = ['name = $1', 'role = $2', 'project_id = $3', 'company_id = $4', 'is_approved = $5', 'is_admin = $6'];
-    const params = [(name || '').trim(), newRole, project_id ? parseInt(project_id, 10) : null, company_id ? parseInt(company_id, 10) : null, !!is_approved, isAdminRole];
+    const params = [(name || '').trim(), newRole, project_id ? parseInt(project_id, 10) : null, company_id ? parseInt(company_id, 10) : null, !!is_approved, false];
     let idx = 7;
     if (email !== undefined && email !== null) {
       const em = String(email).trim();
@@ -2097,20 +2093,14 @@ app.post('/api/admin/users/:id/approve', requireAdmin, async (req, res) => {
   }
 });
 
-/** 해당 회사의 역할만 반환. include_super=1 이고 슈퍼관리자면 superAdmin 옵션 추가 */
+/** 해당 회사의 역할만 반환 (슈퍼관리자는 화면에서 지정 불가, 제외) */
 app.get('/api/admin/roles-by-company', requireAdmin, async (req, res) => {
   try {
     const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
       ? parseInt(req.query.company_id, 10) : null;
-    const includeSuper = req.query.include_super === '1' || req.query.include_super === 'true';
-    let rows = [];
-    if (cid) {
-      rows = await db.query('SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id', [cid]);
-    }
-    rows = rows || [];
-    if (includeSuper && isSuperAdminUser(req.user) && !rows.some(r => r.code === 'superAdmin')) {
-      rows = [{ id: 'super', code: 'superAdmin', label: '슈퍼관리자', display_order: -1 }, ...rows];
-    }
+    if (!cid) return res.json([]);
+    const rows = await db.query('SELECT id, code, label, display_order FROM roles WHERE company_id = $1 AND code != $2 ORDER BY display_order, id', [cid, 'superAdmin']);
+    res.json(rows || []);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

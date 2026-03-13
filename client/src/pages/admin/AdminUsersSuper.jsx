@@ -57,7 +57,7 @@ export default function AdminUsersSuper() {
       return;
     }
     const cid = parseInt(newCompanyId, 10);
-    Promise.all([api.getProjects(cid), api.getRolesByCompany(cid, true)])
+    Promise.all([api.getProjects(cid), api.getRolesByCompany(cid)])
       .then(([p, r]) => {
         const projList = Array.isArray(p) ? p : [];
         const roleList = Array.isArray(r) ? r : [];
