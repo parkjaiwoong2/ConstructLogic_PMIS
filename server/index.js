@@ -834,6 +834,16 @@ function nameToCode(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_\uac00-\ud7af]/g, '') || null;
 }
 
+/** 역할 한글명 -> 영문 코드 (관리자=admin, 작성자=author 등) */
+const ROLE_LABEL_TO_CODE = {
+  관리자: 'admin', 작성자: 'author', 검토자: 'reviewer', 승인자: 'approver',
+  'ceo': 'ceo', 'CEO': 'ceo',
+};
+function labelToRoleCode(label) {
+  const t = (label || '').trim();
+  return ROLE_LABEL_TO_CODE[t] || null;
+}
+
 /** 한글명 → 영문 약어 코드 (대문자, 한글은 음절 첫글자, 영문은 단어 첫글자) */
 function nameToCodeFromName(name) {
   if (!name || typeof name !== 'string') return null;
@@ -1458,7 +1468,7 @@ app.post('/api/admin/roles', requireAdmin, async (req, res) => {
     const belongs = await userBelongsToCompany(req.user.id, cid);
     if (!belongs) return res.status(403).json({ error: '소속 회사에만 역할을 추가할 수 있습니다.' });
   }
-  const c = nameToCode(label.trim()) || `role_${Date.now()}`;
+  const c = labelToRoleCode(label) || nameToCodeFromName(label.trim()) || `role_${Date.now()}`;
   try {
     const r = await db.run('INSERT INTO roles (company_id, code, label, display_order) VALUES ($1, $2, $3, 99) RETURNING id, code, label, display_order', [cid, c, label.trim()]);
     const row = r.rows[0];
@@ -1682,6 +1692,13 @@ app.post('/api/admin/companies', requireAdmin, async (req, res) => {
           [newCompanyId, t.code || null, t.name]
         );
       }
+    }
+    const defaultRoles = [
+      { code: 'admin', label: '관리자', display_order: 0 },
+      { code: 'author', label: '작성자', display_order: 1 },
+    ];
+    for (const role of defaultRoles) {
+      await db.run('INSERT INTO roles (company_id, code, label, display_order) VALUES ($1, $2, $3, $4) ON CONFLICT (company_id, code) DO NOTHING', [newCompanyId, role.code, role.label, role.display_order]);
     }
     res.json(r.rows[0]);
   } catch (e) {
