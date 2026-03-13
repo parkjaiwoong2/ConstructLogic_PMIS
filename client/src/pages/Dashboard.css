@@ -261,30 +261,28 @@
     transform-origin: left center;
   }
 
-  /* 항목별 지출: 가로 1.3배 확대 */
+  /* 항목별 지출: 왼쪽 정렬, 가로 1.2배 확대 */
   .dashboard .dashboard-grid .card-chart:nth-child(1) .chart-container {
-    transform: scale(1.123, 0.72);
+    transform: scale(0.864, 0.72);
     transform-origin: left center;
     align-self: flex-start;
   }
 
-  /* 현장(건)별 지출: 가로 1.4배 확대, 왼쪽 정렬 */
+  /* 현장(건)별 지출: 왼쪽 정렬, 데이터 짤림 방지 */
   .dashboard .dashboard-grid .card-chart:nth-child(2) .chart-container {
-    transform: scale(1.21, 0.72);
+    transform: scale(0.864, 0.72);
     transform-origin: left center;
     align-self: flex-start;
-    padding-left: 0;
   }
 
   .dashboard .dashboard-grid .card-chart:nth-child(2) {
     overflow: visible !important;
     justify-content: flex-start;
-    padding-left: 0.25rem !important;
   }
 
-  /* 월별 차트: 가로 1.4배 확대 (기존 0.4 → 0.56) */
+  /* 월별 차트: 그래프 가로 길이 2.5배 축소, 왼쪽 정렬 */
   .dashboard .card-chart.card-full .chart-container {
-    transform: scale(0.56, 0.72);
+    transform: scaleX(0.4);
     transform-origin: left center;
     overflow: visible !important;
     align-self: flex-start;
