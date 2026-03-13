@@ -167,8 +167,7 @@ export default function DocumentList() {
       </div>
 
       <div className="filters">
-        <select value={filter.company_id || ''} onChange={e => { setFilter(f => ({ ...f, company_id: e.target.value || '' })); setPage(1); }} disabled={companies.length === 1}>
-          <option value="">전체 회사</option>
+        <select value={filter.company_id || ''} onChange={e => { setFilter(f => ({ ...f, company_id: e.target.value || '' })); setPage(1); }} disabled={companies.length <= 1}>
           {companies.map(c => (
             <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
           ))}

@@ -130,8 +130,7 @@ export default function AdminApprovalSequence() {
       <section className="card" style={{ marginBottom: '1rem' }}>
         <h3>회사 선택</h3>
         <div className="form-row" style={{ marginTop: '0.5rem' }}>
-          <select value={selectedCompanyId ?? ''} onChange={handleCompanyChange} style={{ minWidth: 180 }}>
-            <option value="">회사 선택</option>
+          <select value={selectedCompanyId ?? ''} onChange={handleCompanyChange} style={{ minWidth: 180 }} disabled={companies.length <= 1}>
             {companies.map(c => (
               <option key={c.id} value={c.id}>
                 {c.name}{c.is_default ? ' (대표)' : ''}

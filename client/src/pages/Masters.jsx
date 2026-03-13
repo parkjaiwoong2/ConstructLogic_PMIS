@@ -171,8 +171,7 @@ export default function Masters() {
       {companies.length > 0 && (
         <div className="form-row" style={{ marginBottom: '1rem' }}>
           <label>회사</label>
-          <select value={companyId} onChange={e => setCompanyId(e.target.value)} disabled={companies.length === 1}>
-            <option value="">전체 (조회만)</option>
+          <select value={companyId} onChange={e => setCompanyId(e.target.value)} disabled={companies.length <= 1}>
             {companies.map(c => (
               <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
             ))}

@@ -144,8 +144,7 @@ export default function ImportCsv() {
         <div className="form-row">
           <label>회사</label>
           {isAdmin ? (
-            <select value={companyId || ''} onChange={e => setCompanyId(e.target.value)} disabled={companies.length === 1}>
-              <option value="">선택</option>
+            <select value={companyId || ''} onChange={e => setCompanyId(e.target.value)} disabled={companies.length <= 1}>
               {companies.map(c => (
                 <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
               ))}

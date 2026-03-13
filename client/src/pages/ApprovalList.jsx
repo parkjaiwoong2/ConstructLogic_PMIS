@@ -64,8 +64,7 @@ export default function ApprovalList() {
 
       <div className="filters" style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
         <label className="filter-label">회사</label>
-        <select value={companyId || ''} onChange={e => { setCompanyId(e.target.value || ''); setPage(1); }} disabled={companies.length === 1} style={{ minWidth: 160 }}>
-          <option value="">전체 회사</option>
+        <select value={companyId || ''} onChange={e => { setCompanyId(e.target.value || ''); setPage(1); }} disabled={companies.length <= 1} style={{ minWidth: 160 }}>
           {companies.map(c => (
             <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
           ))}

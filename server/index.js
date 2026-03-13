@@ -2104,6 +2104,75 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
   }
 });
 
+/** 슈퍼관리자 전용: 전체 회사 대상 사용자 등록/조회 */
+app.get('/api/admin/super/batch/users-page', requireAdmin, async (req, res) => {
+  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
+  try {
+    const { company_id, name, limit, offset } = req.query;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+    if (company_id != null && company_id !== '') {
+      const cid = parseInt(company_id, 10);
+      if (isNaN(cid)) return res.status(400).json({ error: '유효하지 않은 회사 ID' });
+      params.push(cid);
+      conditions.push(`uc.company_id = $${idx++}`);
+    }
+    if (name != null && name.trim() !== '') {
+      const nameLike = `%${name.trim()}%`;
+      params.push(nameLike, nameLike);
+      conditions.push(`(au.name ILIKE $${idx++} OR au.email ILIKE $${idx++})`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limitVal = limit != null ? Math.min(parseInt(limit, 10) || 20, 100) : 20;
+    const offsetVal = offset != null ? Math.max(0, parseInt(offset, 10)) : 0;
+    const roleMenusCid = (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10)))
+      ? parseInt(company_id, 10) : null;
+
+    const usersParams = [...params, limitVal, offsetVal];
+    const projectsQuery = roleMenusCid
+      ? db.query('SELECT id, name FROM projects WHERE company_id = $1 OR company_id IS NULL ORDER BY name', [roleMenusCid])
+      : Promise.resolve([]);
+    const rolesQuery = roleMenusCid
+      ? db.query('SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id', [roleMenusCid])
+      : Promise.resolve([]);
+    const menuQuery = roleMenusCid
+      ? db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [roleMenusCid])
+      : db.query('SELECT role, menu_path FROM role_menus WHERE company_id = (SELECT id FROM companies WHERE is_default = true LIMIT 1) ORDER BY role, menu_path');
+
+    const [usersRes, rolesData, menuRows, projectsData, companiesData] = await Promise.all([
+      db.query(`
+        WITH user_companies AS (
+          SELECT user_id, company_id FROM auth_user_companies
+          UNION
+          SELECT id as user_id, company_id FROM auth_users WHERE company_id IS NOT NULL
+        )
+        SELECT au.id, au.email, au.name, au.role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
+               p.name as project_name, uc.company_id as row_company_id, c.name as row_company_name,
+               COUNT(*) OVER ()::int as total
+        FROM auth_users au
+        JOIN user_companies uc ON uc.user_id = au.id
+        JOIN companies c ON c.id = uc.company_id
+        LEFT JOIN projects p ON p.id = au.project_id
+        ${where}
+        ORDER BY au.is_approved ASC, c.name, au.email
+        LIMIT $${idx} OFFSET $${idx + 1}
+      `, usersParams),
+      rolesQuery,
+      menuQuery,
+      projectsQuery,
+      getCompaniesForUser({ id: req.user.id, is_admin: true })
+    ]);
+    const total = usersRes.length ? parseInt(usersRes[0].total || 0, 10) : 0;
+    const rows = usersRes.map(({ total: _, ...r }) => r);
+    const byRole = {};
+    (menuRows || []).forEach(r => { if (!byRole[r.role]) byRole[r.role] = []; byRole[r.role].push(r.menu_path); });
+    res.json({ rows, total, roles: rolesData || [], roleMenus: byRole, projects: projectsData || [], companies: companiesData || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.put('/api/admin/approval-sequences', requireAdmin, async (req, res) => {
   const { company_id, sequences } = req.body;
   const cid = company_id && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;

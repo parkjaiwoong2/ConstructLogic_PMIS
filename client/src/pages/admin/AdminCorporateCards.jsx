@@ -112,8 +112,7 @@ export default function AdminCorporateCards() {
         <h2>필터 및 추가</h2>
         <div className="form-row">
           <label>회사</label>
-          <select value={companyId} onChange={e => setCompanyId(e.target.value)} disabled={companies.length === 1}>
-            <option value="">전체</option>
+          <select value={companyId} onChange={e => setCompanyId(e.target.value)} disabled={companies.length <= 1}>
             {companies.map(c => (
               <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
             ))}

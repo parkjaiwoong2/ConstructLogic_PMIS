@@ -211,8 +211,7 @@ export default function CardSettlement() {
       <p className="subtitle">승인된 결재 문서만 목록에 표시됩니다. 선택한 항목을 정산 처리할 수 있습니다.</p>
 
       <div className="filters">
-        <select value={filter.company_id || ''} onChange={e => { setFilter(f => ({ ...f, company_id: e.target.value || '' })); setPage(1); }} disabled={companies.length === 1} style={{ minWidth: 140 }}>
-          <option value="">전체 회사</option>
+        <select value={filter.company_id || ''} onChange={e => { setFilter(f => ({ ...f, company_id: e.target.value || '' })); setPage(1); }} disabled={companies.length <= 1} style={{ minWidth: 140 }}>
           {companies.map(c => (
             <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
           ))}

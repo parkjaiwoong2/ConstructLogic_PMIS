@@ -123,8 +123,7 @@ export default function ExpenseList() {
         <h2 style={{ marginBottom: '0.75rem', fontSize: '0.95rem' }}>조회 조건</h2>
         <div className="filter-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem' }}>
           <label className="filter-label">회사</label>
-          <select value={filter.company_id || ''} onChange={e => setFilter(f => ({ ...f, company_id: e.target.value || '' }))} disabled={companies.length === 1}>
-            <option value="">전체 회사</option>
+          <select value={filter.company_id || ''} onChange={e => setFilter(f => ({ ...f, company_id: e.target.value || '' }))} disabled={companies.length <= 1}>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>)}
           </select>
           <label className="filter-label">기간</label>

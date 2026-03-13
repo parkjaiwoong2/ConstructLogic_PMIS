@@ -339,9 +339,8 @@ export default function ExpenseNew() {
                   const c = companies.find(x => String(x.id) === e.target.value);
                   setForm(f => ({ ...f, company_id: e.target.value, company_name: c?.name || '' }));
                 }}
-                disabled={companies.length === 1}
+                disabled={companies.length <= 1}
               >
-                <option value="">선택</option>
                 {companies.map(c => (
                   <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
                 ))}

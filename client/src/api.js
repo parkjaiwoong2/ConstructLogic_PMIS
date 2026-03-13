@@ -145,6 +145,10 @@ export const api = {
     const q = params ? new URLSearchParams(params).toString() : '';
     return fetchJson(`${API}/admin/batch/users-page${q ? '?' + q : ''}`);
   },
+  getAdminSuperBatchUsersPage: (params) => {
+    const q = params ? new URLSearchParams(params).toString() : '';
+    return fetchJson(`${API}/admin/super/batch/users-page${q ? '?' + q : ''}`);
+  },
   getAdminEditHistory: (params) => {
     const q = params ? new URLSearchParams(params).toString() : '';
     return fetchJson(`${API}/admin/edit-history${q ? '?' + q : ''}`);

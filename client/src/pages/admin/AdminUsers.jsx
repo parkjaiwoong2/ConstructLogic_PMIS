@@ -60,6 +60,8 @@ export default function AdminUsers() {
       const roleList = Array.isArray(data?.roles) ? data.roles : [];
       setProjectsForFilter(projList);
       setRolesForFilter(roleList);
+      const def = comp.find(c => c.is_default) || comp[0];
+      if (def && !ef.company_id) setFilters(f => ({ ...f, company_id: String(def.id) }));
       const cids = [...new Set(u.map(x => x.row_company_id ?? x.company_id).filter(Boolean))];
       cids.forEach(cid => {
         Promise.all([api.getProjects(cid), api.getRolesByCompany(cid)])
@@ -218,8 +220,7 @@ export default function AdminUsers() {
       <section className="card">
         <h2>사용자 등록</h2>
         <form onSubmit={addUser} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem' }}>
-          <select value={newCompanyId} onChange={e => setNewCompanyId(e.target.value)} style={{ minWidth: 120 }}>
-            <option value="">회사</option>
+          <select value={newCompanyId} onChange={e => setNewCompanyId(e.target.value)} style={{ minWidth: 120 }} required disabled={companies.length <= 1}>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>)}
           </select>
           <input placeholder="이메일" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
@@ -250,7 +251,6 @@ export default function AdminUsers() {
             }}
             aria-label="회사"
           >
-            <option value="">회사 전체</option>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>)}
           </select>
           <select

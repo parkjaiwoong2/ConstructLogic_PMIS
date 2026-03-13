@@ -3,12 +3,14 @@ import MastersSuper from './MastersSuper';
 import RolePermissionsSuper from './RolePermissionsSuper';
 import AdminCompanySuper from './AdminCompanySuper';
 import AdminSubscriptionPlans from './AdminSubscriptionPlans';
+import AdminUsersSuper from './AdminUsersSuper';
 import './Admin.css';
 
 const TABS = [
   { id: 'masters', label: '마스터관리', component: MastersSuper },
   { id: 'roles', label: '역할관리', component: RolePermissionsSuper },
   { id: 'company', label: '회사관리', component: AdminCompanySuper },
+  { id: 'users', label: '사용자관리자추가', component: AdminUsersSuper },
   { id: 'subscription', label: '요금제관리', component: AdminSubscriptionPlans },
 ];
 

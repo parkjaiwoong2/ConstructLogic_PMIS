@@ -93,8 +93,7 @@ export default function Dashboard() {
       <header className="page-header">
         <h1>CEO 대시보드</h1>
         <span className="chart-hint">그래프를 클릭하면 상세 내역을 볼 수 있습니다</span>
-        <select value={companyId || ''} onChange={e => setCompanyId(e.target.value || '')} disabled={companies.length === 1} style={{ minWidth: 140 }}>
-          <option value="">전체 회사</option>
+        <select value={companyId || ''} onChange={e => setCompanyId(e.target.value || '')} disabled={companies.length <= 1} style={{ minWidth: 140 }}>
           {companies.map(c => (
             <option key={c.id} value={c.id}>{c.name}{c.id === user?.company_id ? ' (대표)' : ''}</option>
           ))}

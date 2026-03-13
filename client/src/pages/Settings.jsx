@@ -198,9 +198,8 @@ export default function Settings() {
             value={companyId || ''}
             onChange={e => setCompanyId(e.target.value || '')}
             style={{ minWidth: 180 }}
-            disabled={singleCompanyOnly}
+            disabled={singleCompanyOnly || companies.length <= 1}
           >
-            <option value="">{showCompanySelect ? '회사 선택' : '선택 안 함'}</option>
             {companies.map(c => (
               <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
             ))}

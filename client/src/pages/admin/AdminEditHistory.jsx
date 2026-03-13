@@ -69,8 +69,7 @@ export default function AdminEditHistory() {
 
       <div className="filters" style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
         <label className="filter-label">회사</label>
-        <select value={companyId || ''} onChange={e => { setCompanyId(e.target.value || ''); setPage(1); }} style={{ minWidth: 160 }}>
-          <option value="">전체 회사</option>
+        <select value={companyId || ''} onChange={e => { setCompanyId(e.target.value || ''); setPage(1); }} style={{ minWidth: 160 }} disabled={companies.length <= 1}>
           {companies.map(c => (
             <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
           ))}

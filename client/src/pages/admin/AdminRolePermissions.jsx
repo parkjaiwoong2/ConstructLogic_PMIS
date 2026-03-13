@@ -139,8 +139,8 @@ export default function AdminRolePermissions() {
             value={companyId}
             onChange={e => setCompanyId(e.target.value)}
             style={{ minWidth: 200 }}
+            disabled={companies.length <= 1}
           >
-            <option value="">회사 선택</option>
             {companies.map(c => (
               <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (대표)' : ''}</option>
             ))}
