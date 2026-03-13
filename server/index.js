@@ -2501,47 +2501,68 @@ app.delete('/api/admin/subscription-plans/:id', requireAdmin, async (req, res) =
 
 app.get('/api/export/batch-approval-excel', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const { period_from, period_to, status, project, card_no, company_id } = req.query;
-  // 문서별/개별 선택과 무관하게 카드사용내역서(문서별) 형식으로 출력
-  const mode = 'by_document';
+  const { period_from, period_to, status, project, card_no, company_id, output_mode, settled } = req.query;
+  const modeVal = String(output_mode || '').trim().toLowerCase();
+  const mode = (modeVal === 'by_item') ? 'by_item' : 'by_document';
   try {
     const ExcelJS = require('exceljs');
     const companyId = company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
     const companyIds = !companyId && req.user?.id ? await getCurrentUserCompanyIds(req.user.id) : null;
     const params = [];
     const companyFilter = buildCompanyFilterJoin(company_id, companyIds, params);
-    const buildWhere = (strict = true) => {
-      const where = companyFilter ? [companyFilter.whereCond] : [];
-      let pIdx = params.length + 1;
-      if (status) { params.push(status); where.push(`ed.status = $${pIdx++}`); }
-      if (project) { params.push(project); where.push(`ed.project_name = $${pIdx++}`); }
-      if (card_no != null && String(card_no).trim() !== '') {
-        params.push(`%${String(card_no).trim()}%`);
-        where.push(`(ed.card_no ILIKE $${pIdx++})`);
-      }
-      if (strict) {
-        if (period_from) { params.push(period_from); where.push(`ed.period_end >= $${pIdx++}`); }
-        if (period_to) { params.push(period_to); where.push(`ed.period_start <= $${pIdx++}`); }
-      }
-      return { where, params };
-    };
-    let { where } = buildWhere(true);
-    let whereClause = where.length ? ' WHERE ' + where.join(' AND ') : '';
     const joinPart = companyFilter ? companyFilter.join : '';
     const fromClause = `FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id${joinPart}`;
     const selectCols = 'ei.id as item_id, ed.id as document_id, ed.doc_no, ei.use_date, ei.project_name, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount, ei.remark, ed.card_no, ed.user_name, ed.period_start, ed.period_end';
-    let items = await db.query(`
-      SELECT ${selectCols} ${fromClause} ${whereClause}
-      ORDER BY ei.use_date, ei.id
-    `, params);
-    if (items.length === 0) {
-      const fallback = buildWhere(false);
-      whereClause = fallback.where.length ? ' WHERE ' + fallback.where.join(' AND ') : '';
-      items = await db.query(`
-        SELECT ${selectCols} ${fromClause} ${whereClause}
-        ORDER BY ei.use_date DESC, ei.id
-        LIMIT 2000
-      `, params);
+    let items = [];
+    if (mode === 'by_document') {
+      const docParams = [];
+      const docCompanyFilter = buildCompanyFilterJoin(company_id, companyIds, docParams);
+      const docWhere = ['ed.status = \'approved\''];
+      if (docCompanyFilter) docWhere.push(docCompanyFilter.whereCond);
+      if (project) { docParams.push(project); docWhere.push(`ed.project_name = $${docParams.length}`); }
+      if (card_no != null && String(card_no).trim() !== '') {
+        docParams.push(`%${String(card_no).trim()}%`);
+        docWhere.push(`(ed.card_no ILIKE $${docParams.length})`);
+      }
+      if (period_from) { docParams.push(period_from); docWhere.push(`ed.period_end >= $${docParams.length}`); }
+      if (period_to) { docParams.push(period_to); docWhere.push(`ed.period_start <= $${docParams.length}`); }
+      if (settled === 'y' || settled === '1' || settled === 'true') docWhere.push('ed.settled_at IS NOT NULL');
+      else if (settled === 'n' || settled === '0' || settled === 'false') docWhere.push('ed.settled_at IS NULL');
+      const fromDoc = `FROM expense_documents ed${docCompanyFilter ? docCompanyFilter.join : ''}`;
+      const docWhereClause = ' WHERE ' + docWhere.join(' AND ');
+      const docIdsRows = await db.query(`SELECT ed.id ${fromDoc}${docWhereClause} ORDER BY ed.period_start DESC, ed.id DESC`, docParams);
+      const docIds = (docIdsRows || []).map(r => r.id).filter(Boolean);
+      if (docIds.length > 0) {
+        const ph = docIds.map((_, i) => `$${docParams.length + 1 + i}`).join(',');
+        items = await db.query(
+          `SELECT ${selectCols} ${fromClause} WHERE ed.id IN (${ph}) ORDER BY ei.use_date, ei.id`,
+          [...docParams, ...docIds]
+        );
+      }
+    } else {
+      const buildWhere = (strict = true) => {
+        const where = companyFilter ? [companyFilter.whereCond] : [];
+        let pIdx = params.length + 1;
+        if (status) { params.push(status); where.push(`ed.status = $${pIdx++}`); }
+        if (project) { params.push(project); where.push(`ed.project_name = $${pIdx++}`); }
+        if (card_no != null && String(card_no).trim() !== '') {
+          params.push(`%${String(card_no).trim()}%`);
+          where.push(`(ed.card_no ILIKE $${pIdx++})`);
+        }
+        if (strict) {
+          if (period_from) { params.push(period_from); where.push(`ed.period_end >= $${pIdx++}`); }
+          if (period_to) { params.push(period_to); where.push(`ed.period_start <= $${pIdx++}`); }
+        }
+        return { where, params };
+      };
+      let { where } = buildWhere(true);
+      let whereClause = where.length ? ' WHERE ' + where.join(' AND ') : '';
+      items = await db.query(`SELECT ${selectCols} ${fromClause} ${whereClause} ORDER BY ei.use_date, ei.id`, params);
+      if (items.length === 0) {
+        const fallback = buildWhere(false);
+        whereClause = fallback.where.length ? ' WHERE ' + fallback.where.join(' AND ') : '';
+        items = await db.query(`SELECT ${selectCols} ${fromClause} ${whereClause} ORDER BY ei.use_date DESC, ei.id LIMIT 2000`, params);
+      }
     }
     if (mode === 'by_document' && items.length > 0) {
       const docIds = [...new Set(items.map(i => i.document_id).filter(Boolean))];
@@ -2828,6 +2849,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
     const filename = (fnFrom && fnTo) ? `카드및현금사용-${fnFrom}~${fnTo}.xlsx` : '카드및현금사용.xlsx';
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('X-Output-Mode', mode);
     res.send(Buffer.from(buf));
   } catch (e) {
     res.status(500).json({ error: e.message });
