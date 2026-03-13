@@ -8,7 +8,7 @@ const CURRENT_USER_KEY = 'currentUserName';
 
 export default function Settings() {
   const { user } = useAuth();
-  const isAdmin = user?.is_admin === true;
+  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin === true;
   const selfName = user?.name || '';
   const [currentUser, setCurrentUser] = useState(() => selfName || localStorage.getItem(CURRENT_USER_KEY) || '');
   const [users, setUsers] = useState([]);

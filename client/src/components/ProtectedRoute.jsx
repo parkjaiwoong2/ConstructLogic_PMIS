@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children, path, superOnly }) {
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
-  if (superOnly && user?.is_admin !== true) {
+  if (superOnly && user?.role !== 'superAdmin' && user?.is_admin !== true) {
     return <Navigate to={firstAccessiblePath ?? '/'} replace />;
   }
   if (path && !canAccess(path)) {

@@ -6,7 +6,7 @@ import './Masters.css';
 
 export default function Masters() {
   const { user } = useAuth();
-  const isAdmin = user?.is_admin || user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin;
   const [companies, setCompanies] = useState([]);
   const [companyId, setCompanyId] = useState('');
   const [accountItems, setAccountItems] = useState([]);

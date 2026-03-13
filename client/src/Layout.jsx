@@ -18,7 +18,7 @@ const MENUS = [
   { to: '/admin/approval-sequence', end: false, label: '결재순서', admin: true },
   { to: '/admin/permissions', end: false, label: '권한관리', admin: true },
   { to: '/admin/edit-history', end: false, label: '관리자 수정 히스토리', admin: true },
-  { to: '/admin/super', end: false, label: '관리자관리', admin: true, superOnly: true },
+  { to: '/admin/super', end: false, label: '관리자슈퍼관리', admin: true, superOnly: true },
 ];
 
 export default function Layout() {
@@ -41,11 +41,11 @@ export default function Layout() {
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>로딩 중...</div>;
   if (!user) return <Navigate to="/login" replace />;
 
-  const isSuperAdmin = user?.is_admin === true;
-  const hasAdminAccess = user?.is_admin || user?.role === 'admin';
+  const isSuperAdmin = user?.role === 'superAdmin' || user?.is_admin === true;
+  const hasAdminAccess = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin === true;
   const visibleMenus = MENUS.filter(m => {
+    if (m.superOnly) return isSuperAdmin && canAccess(m.to === '/' ? '/' : m.to);
     if (m.admin && !hasAdminAccess) return false;
-    if (m.superOnly && !isSuperAdmin) return false;
     return canAccess(m.to === '/' ? '/' : m.to);
   });
 

@@ -16,7 +16,7 @@ const COMPANY_ADMIN_MENUS = [
   { path: '/admin/approval-sequence', label: '결재순서' },
   { path: '/admin/permissions', label: '권한관리' },
   { path: '/admin/edit-history', label: '관리자 수정 히스토리' },
-  { path: '/admin/super', label: '관리자관리' },
+  { path: '/admin/super', label: '관리자슈퍼관리' },
 ];
 
 const ROLE_COMPANY_ADMIN = 'company_admin';
@@ -76,7 +76,7 @@ export default function RolePermissionsSuper() {
         <h1>역할관리 (슈퍼관리자)</h1>
       </header>
       <p className="subtitle">
-        회사별 관리자(role=admin, is_admin=false)가 접근할 수 있는 메뉴를 설정합니다. 회사를 선택한 후 해당 회사 관리자 메뉴를 설정하세요.
+        회사별 관리자(role=admin)가 접근할 수 있는 메뉴를 설정합니다. 회사를 선택한 후 해당 회사 관리자 메뉴를 설정하세요. (슈퍼관리자 role=superAdmin는 전체 메뉴 접근)
       </p>
 
       <section className="card">

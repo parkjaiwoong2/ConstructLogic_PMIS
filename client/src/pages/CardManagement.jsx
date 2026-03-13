@@ -15,7 +15,7 @@ export default function CardManagement() {
   const tabParam = searchParams.get('tab') || 'settlement';
   const [activeTab, setActiveTab] = useState(tabParam);
   const { user } = useAuth();
-  const hasAdminAccess = user?.is_admin || user?.role === 'admin';
+  const hasAdminAccess = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin;
 
   useEffect(() => {
     const tab = searchParams.get('tab') || 'settlement';

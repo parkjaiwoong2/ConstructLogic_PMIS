@@ -29,7 +29,7 @@ function getDefaultPeriod() {
 
 export default function CardSettlement() {
   const { user } = useAuth();
-  const isAdmin = user?.is_admin || user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin;
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [sumCardAmount, setSumCardAmount] = useState(0);

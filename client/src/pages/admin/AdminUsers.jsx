@@ -351,7 +351,7 @@ export default function AdminUsers() {
                     <span className="badge">승인됨</span>
                   )}
                 </td>
-                <td>{((getRowValue(u, 'role') ?? u.role) === 'admin' || u.is_admin) ? '전체' : (roleMenus[getRowValue(u, 'role') ?? u.role] || []).length + '개 메뉴'}</td>
+                <td>{((getRowValue(u, 'role') ?? u.role) === 'admin' || (getRowValue(u, 'role') ?? u.role) === 'superAdmin' || u.is_admin) ? '전체' : (roleMenus[getRowValue(u, 'role') ?? u.role] || []).length + '개 메뉴'}</td>
                 <td>
                   <button type="button" className="btn btn-primary btn-sm" onClick={() => saveRow(u)}>저장</button>
                 </td>

@@ -132,7 +132,12 @@ export const api = {
   updateAdminUser: (id, body) => fetchJson(`${API}/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   approveAdminUser: (id) => fetchJson(`${API}/admin/users/${id}/approve`, { method: 'POST' }),
   getAdminRoles: () => fetchJson(`${API}/admin/roles`),
-  getRolesByCompany: (companyId) => fetchJson(`${API}/admin/roles-by-company${companyId ? '?company_id=' + companyId : ''}`),
+  getRolesByCompany: (companyId, includeSuper) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('company_id', companyId);
+    if (includeSuper) params.set('include_super', '1');
+    return fetchJson(`${API}/admin/roles-by-company${params.toString() ? '?' + params : ''}`);
+  },
   createAdminRole: (body) => fetchJson(`${API}/admin/roles`, { method: 'POST', body: JSON.stringify(body) }),
   updateAdminRole: (id, body) => fetchJson(`${API}/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteAdminRole: (id) => fetchJson(`${API}/admin/roles/${id}`, { method: 'DELETE' }),

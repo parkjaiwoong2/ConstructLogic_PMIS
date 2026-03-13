@@ -1,6 +1,6 @@
 /**
- * zangruri@gmail.com → 슈퍼관리자 (is_admin=true, 모든 권한)
- * psoonm@nate.com → 회사별 관리자 (is_admin=false, role=admin, role_menus company_admin으로 권한 관리)
+ * zangruri@gmail.com → 슈퍼관리자 (role=superAdmin, is_admin=true, 모든 권한 + 관리자슈퍼관리 메뉴)
+ * psoonm@nate.com → 회사별 관리자 (role=admin, is_admin=false, role_menus company_admin으로 권한 관리)
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env.local') });
@@ -8,9 +8,9 @@ const db = require('../db');
 
 async function run() {
   const r1 = await db.pool.query(
-    `UPDATE auth_users SET is_admin = true WHERE email = 'zangruri@gmail.com' RETURNING id, email, name, is_admin, role`
+    `UPDATE auth_users SET role = 'superAdmin', is_admin = true WHERE email = 'zangruri@gmail.com' RETURNING id, email, name, is_admin, role`
   );
-  console.log('zangruri@gmail.com → 슈퍼관리자:', r1.rows[0] || '사용자 없음');
+  console.log('zangruri@gmail.com → 슈퍼관리자 (role=superAdmin):', r1.rows[0] || '사용자 없음');
 
   const r2 = await db.pool.query(
     `UPDATE auth_users SET is_admin = false WHERE email = 'psoonm@nate.com' RETURNING id, email, name, is_admin, role`

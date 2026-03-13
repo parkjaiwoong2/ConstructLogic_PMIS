@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
 
   const canAccess = (path) => {
     if (!user) return false;
-    if (user.is_admin) return true;
+    if (user.role === 'superAdmin' || user.is_admin) return true;
     const norm = (path === '/' || path === '' || !path) ? '/' : (String(path).replace(/\/$/, '') || '/');
     return menus.some(m => {
       const mn = (m === '' || m === '/' || !m) ? '/' : (String(m).trim().replace(/\/$/, '') || '/');
@@ -72,8 +72,8 @@ export function AuthProvider({ children }) {
   const SUPER_ONLY_PATHS = ['/admin/super'];
   const firstAccessiblePath = (() => {
     if (!user) return '/';
-    const hasAdmin = user.is_admin || user.role === 'admin';
-    const isSuper = user.is_admin === true;
+    const hasAdmin = user.role === 'admin' || user.role === 'superAdmin' || user.is_admin;
+    const isSuper = user.role === 'superAdmin' || user.is_admin === true;
     for (const p of MENU_ORDER) {
       if (ADMIN_PATHS.includes(p) && !hasAdmin) continue;
       if (SUPER_ONLY_PATHS.includes(p) && !isSuper) continue;

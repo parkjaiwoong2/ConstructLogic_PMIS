@@ -45,8 +45,8 @@ async function run() {
   const pwHash = await auth.hashPassword('10041004');
   await db.run(
     `INSERT INTO auth_users (company_id, email, password_hash, name, role, is_admin, is_approved)
-     VALUES ($1, $2, $3, $4, 'admin', true, true)
-     ON CONFLICT (email) DO UPDATE SET password_hash = $3, name = $4, is_admin = true, is_approved = true`,
+     VALUES ($1, $2, $3, $4, 'superAdmin', true, true)
+     ON CONFLICT (email) DO UPDATE SET password_hash = $3, name = $4, role = 'superAdmin', is_admin = true, is_approved = true`,
     [companyId, 'zangruri@gmail.com', pwHash, '관리자']
   );
 

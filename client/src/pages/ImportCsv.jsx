@@ -10,7 +10,7 @@ const CURRENT_USER_KEY = 'currentUserName';
 export default function ImportCsv() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.is_admin || user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin;
   const [text, setText] = useState('');
   const [userName, setUserName] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
   const [companyId, setCompanyId] = useState('');

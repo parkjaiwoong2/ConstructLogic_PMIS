@@ -22,6 +22,9 @@ const parseAuth = (req, res, next) => {
 };
 app.use(parseAuth);
 
+const isAdminUser = (u) => u && (u.role === 'admin' || u.role === 'superAdmin' || u.is_admin === true);
+const isSuperAdminUser = (u) => u && (u.role === 'superAdmin' || u.is_admin === true);
+
 // ========== 인증/회사 API (로그인 전 접근) ==========
 
 app.post('/api/auth/login', async (req, res) => {
@@ -32,7 +35,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!user || !(await auth.verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' });
     }
-    if (!user.is_admin && !user.is_approved) {
+    if (!user.is_admin && user.role !== 'superAdmin' && !user.is_approved) {
       return res.status(403).json({ error: '가입 승인 대기 중입니다. 관리자 승인 후 로그인할 수 있습니다.' });
     }
     const token = auth.signToken(user);
@@ -70,7 +73,7 @@ app.get('/api/companies', async (req, res) => {
   try {
     if (req.query.list === '1' || req.query.list === 'true') {
       if (!req.user?.id) return res.json([]);
-      const userRow = await db.queryOne('SELECT id, is_admin FROM auth_users WHERE id = $1', [req.user.id]);
+      const userRow = await db.queryOne('SELECT id, is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
       const mine = req.query.mine === '1' || req.query.mine === 'true';
       const rows = userRow
         ? (mine
@@ -79,7 +82,7 @@ app.get('/api/companies', async (req, res) => {
                 if (ids.length === 0) return [];
                 return db.query('SELECT c.id, c.name, c.is_default FROM companies c WHERE c.id = ANY($1::int[]) ORDER BY c.id', [ids]);
               })()
-            : await getCompaniesForUser({ id: userRow.id, is_admin: userRow.is_admin }))
+            : await getCompaniesForUser(userRow))
         : [];
       return res.json(rows || []);
     }
@@ -100,7 +103,7 @@ app.get('/api/auth/me', async (req, res) => {
       ? await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies WHERE id = $1', [repCompanyId])
       : await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies ORDER BY id LIMIT 1');
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
-    const isSuperAdmin = user.is_admin === true;
+    const isSuperAdmin = isSuperAdminUser(user);
     const isCompanyAdmin = user.role === 'admin' && !user.is_admin;
     let menus;
     if (isSuperAdmin) {
@@ -128,7 +131,7 @@ app.get('/api/auth/me', async (req, res) => {
         subscription = { plan: subRow.code, planName: subRow.name, maxUsers: subRow.max_users, status: subRow.status, startedAt: subRow.started_at, endsAt: subRow.ends_at, isTrial: subRow.is_trial, trialDays: subRow.trial_days };
       }
     }
-    const userOut = { ...user, is_admin: user.is_admin === true };
+    const userOut = { ...user, is_admin: isSuperAdminUser(user) };
     res.json({ user: userOut, menus: [...new Set(menus)], company, subscription });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -528,13 +531,13 @@ app.put('/api/documents/:id', async (req, res) => {
     const u = await db.queryOne('SELECT id, name, is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
     let isAdminEdit = false;
     if (doc.status !== 'draft') {
-      if (!u || (u.is_admin !== true && u.role !== 'admin')) {
+      if (!isAdminUser(u)) {
         return res.status(403).json({ error: '작성중 상태에서만 수정 가능합니다. 관리자만 결재대기·승인·반려 문서를 수정할 수 있습니다.' });
       }
       isAdminEdit = true;
     } else {
       const isAuthor = u?.name && doc.user_name && String(u.name).trim() === String(doc.user_name).trim();
-      const isAdmin = u && (u.is_admin === true || u.role === 'admin');
+      const isAdmin = isAdminUser(u);
       if (!isAuthor && !isAdmin) return res.status(403).json({ error: '본인이 작성한 문서만 수정할 수 있습니다.' });
       if (isAdmin && !isAuthor) isAdminEdit = true;
     }
@@ -1186,7 +1189,7 @@ app.get('/api/user-cards', async (req, res) => {
   const company_id = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
     ? parseInt(req.query.company_id, 10)
     : null;
-  if (all && req.user && (req.user.is_admin || req.user.role === 'admin')) {
+  if (all && req.user && isAdminUser(req.user)) {
     try {
       if (company_id != null) {
         const rows = await db.query(`
@@ -1360,7 +1363,7 @@ app.delete('/api/corporate-cards/:id', async (req, res) => {
 app.get('/api/admin/master-templates/account-items', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   try {
     const rows = await db.query('SELECT id, code, name, display_order FROM master_templates_account_items ORDER BY display_order, id');
     res.json(rows);
@@ -1371,7 +1374,7 @@ app.get('/api/admin/master-templates/account-items', async (req, res) => {
 app.get('/api/admin/master-templates/projects', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   try {
     const rows = await db.query('SELECT id, code, name FROM master_templates_projects ORDER BY name');
     res.json(rows);
@@ -1382,7 +1385,7 @@ app.get('/api/admin/master-templates/projects', async (req, res) => {
 app.post('/api/admin/master-templates/account-items', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
   try {
@@ -1399,7 +1402,7 @@ app.post('/api/admin/master-templates/account-items', async (req, res) => {
 app.put('/api/admin/master-templates/account-items/:id', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   const id = parseInt(req.params.id, 10);
   const { name } = req.body;
   if (!id || isNaN(id) || !name?.trim()) return res.status(400).json({ error: 'ID 및 항목명 필수' });
@@ -1415,7 +1418,7 @@ app.put('/api/admin/master-templates/account-items/:id', async (req, res) => {
 app.delete('/api/admin/master-templates/account-items/:id', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
@@ -1429,7 +1432,7 @@ app.delete('/api/admin/master-templates/account-items/:id', async (req, res) => 
 app.post('/api/admin/master-templates/projects', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
   try {
@@ -1446,7 +1449,7 @@ app.post('/api/admin/master-templates/projects', async (req, res) => {
 app.put('/api/admin/master-templates/projects/:id', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   const id = parseInt(req.params.id, 10);
   const { name } = req.body;
   if (!id || isNaN(id) || !name?.trim()) return res.status(400).json({ error: 'ID 및 현장명 필수' });
@@ -1462,7 +1465,7 @@ app.put('/api/admin/master-templates/projects/:id', async (req, res) => {
 app.delete('/api/admin/master-templates/projects/:id', async (req, res) => {
   if (!req.user?.id) return res.status(401).json({ error: 'Unauthorized' });
   const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-  if (!u || (u.is_admin !== true && u.role !== 'admin')) return res.status(403).json({ error: '관리자 권한 필요' });
+  if (!isAdminUser(u)) return res.status(403).json({ error: '관리자 권한 필요' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
@@ -1522,7 +1525,7 @@ async function getCompanyIdsForUserIncludingSameEmail(userId) {
 /** 모든 사용자: 소속 회사만 조회 (동일 이메일 다회사 계정 포함). 슈퍼관리자는 전체 회사 반환 */
 async function getCompaniesForUser(user) {
   if (!user?.id) return [];
-  if (user?.is_admin === true) {
+  if (isSuperAdminUser(user)) {
     return db.query('SELECT id, name, is_default FROM companies ORDER BY is_default DESC, id');
   }
   const ids = await getCompanyIdsForUserIncludingSameEmail(user.id);
@@ -1536,7 +1539,7 @@ async function getCompaniesForUser(user) {
 /** 자신이 속한 회사만 조회. 슈퍼관리자는 전체 회사 반환 (역할관리 등에서 회사 선택 가능하도록) */
 async function getCompaniesForUserMine(user) {
   if (!user?.id) return [];
-  if (user.is_admin === true) {
+  if (isSuperAdminUser(user)) {
     return db.query('SELECT id, name, is_default FROM companies ORDER BY is_default DESC, id');
   }
   const ids = await getCompanyIdsForUserIncludingSameEmail(user.id);
@@ -1613,9 +1616,9 @@ const requireAdmin = async (req, res, next) => {
   }
   try {
     const user = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
-    if (user && (user.is_admin === true || user.role === 'admin')) {
-      adminCache.set(req.user.id, { isAdmin: user.is_admin, role: user.role, cachedAt: Date.now() });
-      req.user.is_admin = user.is_admin;
+    if (isAdminUser(user)) {
+      adminCache.set(req.user.id, { isAdmin: isSuperAdminUser(user), role: user.role, cachedAt: Date.now() });
+      req.user.is_admin = isSuperAdminUser(user);
       req.user.role = user.role;
       return next();
     }
@@ -1645,7 +1648,7 @@ app.post('/api/admin/roles', requireAdmin, async (req, res) => {
     cid = def?.id || null;
   }
   if (!cid) return res.status(400).json({ error: '회사를 선택한 후 역할을 추가하세요.' });
-  const isSuperAdmin = req.user?.is_admin === true;
+  const isSuperAdmin = isSuperAdminUser(req.user);
   if (!isSuperAdmin) {
     const belongs = await userBelongsToCompany(req.user.id, cid);
     if (!belongs) return res.status(403).json({ error: '소속 회사에만 역할을 추가할 수 있습니다.' });
@@ -1735,7 +1738,7 @@ app.get('/api/admin/companies', requireAdmin, async (req, res) => {
 
 /** 슈퍼관리자 전용: 회사 + 관리자 사용자 일괄 등록 */
 app.post('/api/admin/super/company-with-admin', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
   const { name: companyName, email, userName, password } = req.body;
   if (!companyName?.trim()) return res.status(400).json({ error: '회사명을 입력하세요.' });
   if (!email?.trim()) return res.status(400).json({ error: '관리자 이메일을 입력하세요.' });
@@ -1801,7 +1804,7 @@ app.post('/api/admin/super/company-with-admin', requireAdmin, async (req, res) =
 
 /** 슈퍼관리자 전용: 회사 목록 (페이징, 전체 필드, 조회조건) */
 app.get('/api/admin/super/companies-page', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
   const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
@@ -1842,7 +1845,7 @@ app.get('/api/admin/super/companies-page', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/companies', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '회사 추가는 슈퍼관리자만 가능합니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '회사 추가는 슈퍼관리자만 가능합니다.' });
   const { name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '회사명 필수' });
   try {
@@ -1889,7 +1892,7 @@ app.post('/api/admin/companies', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/admin/companies/:id/set-default', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '대표 회사 설정은 슈퍼관리자만 가능합니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '대표 회사 설정은 슈퍼관리자만 가능합니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
@@ -1925,7 +1928,7 @@ app.put('/api/companies/:id', requireAdmin, async (req, res) => {
 });
 
 app.delete('/api/admin/companies/:id', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '회사 삭제는 슈퍼관리자만 가능합니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '회사 삭제는 슈퍼관리자만 가능합니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
@@ -2027,7 +2030,9 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     if (!password) return res.status(400).json({ error: '신규 등록 시 비밀번호 필수' });
     const hash = await auth.hashPassword(password);
     const newRole = role || 'author';
-    const isAdminRole = newRole === 'admin';
+    const isSuper = isSuperAdminUser(req.user);
+    const isAdminRole = newRole === 'superAdmin' ? (isSuper ? true : false) : false;
+    if (newRole === 'superAdmin' && !isSuper) return res.status(403).json({ error: '슈퍼관리자 역할은 슈퍼관리자만 지정할 수 있습니다.' });
     const r = await db.run(
       `INSERT INTO auth_users (company_id, project_id, email, password_hash, name, role, is_admin, is_approved)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, email, name, role`,
@@ -2049,7 +2054,9 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
     const newRole = role || 'author';
-    const isAdminRole = newRole === 'admin';
+    const isSuper = isSuperAdminUser(req.user);
+    const isAdminRole = newRole === 'superAdmin' ? (isSuper ? true : false) : false;
+    if (newRole === 'superAdmin' && !isSuper) return res.status(403).json({ error: '슈퍼관리자 역할은 슈퍼관리자만 지정할 수 있습니다.' });
     const updates = ['name = $1', 'role = $2', 'project_id = $3', 'company_id = $4', 'is_approved = $5', 'is_admin = $6'];
     const params = [(name || '').trim(), newRole, project_id ? parseInt(project_id, 10) : null, company_id ? parseInt(company_id, 10) : null, !!is_approved, isAdminRole];
     let idx = 7;
@@ -2090,14 +2097,20 @@ app.post('/api/admin/users/:id/approve', requireAdmin, async (req, res) => {
   }
 });
 
-/** 해당 회사의 역할만 반환 */
+/** 해당 회사의 역할만 반환. include_super=1 이고 슈퍼관리자면 superAdmin 옵션 추가 */
 app.get('/api/admin/roles-by-company', requireAdmin, async (req, res) => {
   try {
     const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
       ? parseInt(req.query.company_id, 10) : null;
-    if (!cid) return res.json([]);
-    const rows = await db.query('SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id', [cid]);
-    res.json(rows || []);
+    const includeSuper = req.query.include_super === '1' || req.query.include_super === 'true';
+    let rows = [];
+    if (cid) {
+      rows = await db.query('SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id', [cid]);
+    }
+    rows = rows || [];
+    if (includeSuper && isSuperAdminUser(req.user) && !rows.some(r => r.code === 'superAdmin')) {
+      rows = [{ id: 'super', code: 'superAdmin', label: '슈퍼관리자', display_order: -1 }, ...rows];
+    }
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2126,8 +2139,8 @@ app.put('/api/admin/role-menus', requireAdmin, async (req, res) => {
   const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
   if (!cid) return res.status(400).json({ error: '회사 선택 필수' });
   if (role === 'company_admin') {
-    const u = await db.queryOne('SELECT is_admin FROM auth_users WHERE id = $1', [req.user?.id]);
-    if (!u?.is_admin) return res.status(403).json({ error: '회사별 관리자 메뉴는 슈퍼관리자만 수정할 수 있습니다.' });
+    const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user?.id]);
+    if (!isSuperAdminUser(u)) return res.status(403).json({ error: '회사별 관리자 메뉴는 슈퍼관리자만 수정할 수 있습니다.' });
   }
   try {
     await db.run('DELETE FROM role_menus WHERE company_id = $1 AND role = $2', [cid, role]);
@@ -2286,7 +2299,7 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
 
 /** 슈퍼관리자 전용: 전체 회사 대상 사용자 등록/조회 */
 app.get('/api/admin/super/batch/users-page', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
   try {
     const { company_id, name, limit, offset } = req.query;
     const conditions = [];
@@ -2429,7 +2442,7 @@ app.put('/api/admin/company-settings', requireAdmin, async (req, res) => {
 
 // 요금제 관리 (슈퍼관리자 전용)
 app.post('/api/admin/subscription-plans', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 요금제를 등록할 수 있습니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 요금제를 등록할 수 있습니다.' });
   const { code, name, description, price_monthly, setup_fee, max_users, features_json, limits_json, display_order, is_trial, trial_days, is_recommended, plan_type } = req.body;
   if (!code?.trim() || !name?.trim()) return res.status(400).json({ error: '코드와 이름은 필수입니다.' });
   try {
@@ -2449,7 +2462,7 @@ app.post('/api/admin/subscription-plans', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/admin/subscription-plans/:id', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 요금제를 수정할 수 있습니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 요금제를 수정할 수 있습니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   const { code, name, description, price_monthly, setup_fee, max_users, features_json, limits_json, display_order, is_trial, trial_days, is_recommended, plan_type } = req.body;
@@ -2483,7 +2496,7 @@ app.put('/api/admin/subscription-plans/:id', requireAdmin, async (req, res) => {
 });
 
 app.delete('/api/admin/subscription-plans/:id', requireAdmin, async (req, res) => {
-  if (req.user?.is_admin !== true) return res.status(403).json({ error: '슈퍼관리자만 요금제를 삭제할 수 있습니다.' });
+  if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 요금제를 삭제할 수 있습니다.' });
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
@@ -2833,7 +2846,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
 
 app.get('/api/export/ceo-excel', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  if (!req.user.is_admin && req.user.role !== 'ceo') return res.status(403).json({ error: 'CEO 또는 관리자 권한이 필요합니다.' });
+  if (!isAdminUser(req.user) && req.user?.role !== 'ceo') return res.status(403).json({ error: 'CEO 또는 관리자 권한이 필요합니다.' });
   try {
     const XLSX = require('xlsx');
     const rows = await db.query(`
