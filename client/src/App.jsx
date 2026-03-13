@@ -73,7 +73,7 @@ export default function App() {
         <Route path="settings" element={<ProtectedRoute path="/settings"><ErrorBoundary><SettingsIntegrated /></ErrorBoundary></ProtectedRoute>} />
         <Route path="admin/company" element={<ProtectedRoute path="/admin/company"><AdminCompany /></ProtectedRoute>} />
         <Route path="admin/corporate-cards" element={<Navigate to="/card-management?tab=corporate" replace />} />
-        <Route path="admin/super" element={<ProtectedRoute path="/admin/super"><ErrorBoundary><AdminSuper /></ErrorBoundary></ProtectedRoute>} />
+        <Route path="admin/super" element={<ProtectedRoute path="/admin/super" superOnly><ErrorBoundary><AdminSuper /></ErrorBoundary></ProtectedRoute>} />
         <Route path="admin/masters-super" element={<Navigate to="/admin/super" replace />} />
         <Route path="admin/role-permissions-super" element={<Navigate to="/admin/super" replace />} />
         <Route path="admin/company-super" element={<Navigate to="/admin/super" replace />} />

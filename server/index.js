@@ -1547,6 +1547,17 @@ async function getCompaniesForUserMine(user) {
   );
 }
 
+/** 자신이 속한 회사만 조회 (슈퍼관리자 포함 - 결재순서 등에서 로그인 계정 소속 회사만 노출) */
+async function getCompaniesForUserMineStrict(user) {
+  if (!user?.id) return [];
+  const ids = await getCompanyIdsForUserIncludingSameEmail(user.id);
+  if (ids.length === 0) return [];
+  return db.query(
+    `SELECT c.id, c.name, c.is_default FROM companies c WHERE c.id = ANY($1::int[]) ORDER BY c.is_default DESC, c.id`,
+    [ids]
+  );
+}
+
 /** 사용자 소속 회사 여부 (동일 이메일 다회사 계정 포함) */
 async function userBelongsToCompany(userId, companyId) {
   if (!userId || !companyId) return false;
@@ -2147,7 +2158,7 @@ app.get('/api/admin/batch/approval-sequence', requireAdmin, async (req, res) => 
     const cidParam = companyIdParam || null;
     const [seqRows, companies, defaultCompany, rolesData] = await Promise.all([
       db.query('SELECT id, company_id, role, sort_order FROM approval_sequences ORDER BY company_id, sort_order'),
-      getCompaniesForUserMine(req.user),
+      getCompaniesForUserMineStrict(req.user),
       db.queryOne('SELECT id, name, logo_url FROM companies WHERE is_default = true')
         .then(r => r || db.queryOne('SELECT id, name, logo_url FROM companies ORDER BY id LIMIT 1')),
       cidParam
@@ -2182,7 +2193,7 @@ app.get('/api/admin/batch/role-permissions', requireAdmin, async (req, res) => {
     const [rolesData, menuRows, companiesData] = await Promise.all([
       db.query(rolesSql, rolesParams),
       cid ? db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [cid]) : [],
-      getCompaniesForUserMine(req.user)
+      getCompaniesForUserMineStrict(req.user)
     ]);
     const byRole = {};
     (menuRows || []).forEach(r => {
@@ -2261,7 +2272,7 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
         ? db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [roleMenusCid])
         : db.query('SELECT role, menu_path FROM role_menus WHERE company_id = (SELECT id FROM companies WHERE is_default = true LIMIT 1) ORDER BY role, menu_path'),
       projectsQuery,
-      getCompaniesForUserMine(req.user)
+      getCompaniesForUserMineStrict(req.user)
     ]);
     const total = usersRes.length ? parseInt(usersRes[0].total || 0, 10) : 0;
     const rows = usersRes.map(({ total: _, ...r }) => r);
