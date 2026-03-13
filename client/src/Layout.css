@@ -222,3 +222,24 @@
     padding: 0.75rem 1rem;
   }
 }
+
+/* 출력(인쇄) 시 사이드바/메뉴 숨김 */
+@media print {
+  html, body {
+    overflow: hidden !important;
+  }
+  .menu-toggle,
+  .sidebar-overlay,
+  .sidebar,
+  .layout-footer {
+    display: none !important;
+  }
+  .layout-body {
+    flex: 1 1 100%;
+    overflow: hidden !important;
+  }
+  .main {
+    padding: 0;
+    overflow: hidden !important;
+  }
+}

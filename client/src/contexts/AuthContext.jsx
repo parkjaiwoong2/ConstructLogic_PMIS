@@ -60,8 +60,11 @@ export function AuthProvider({ children }) {
   const canAccess = (path) => {
     if (!user) return false;
     if (user.is_admin) return true;
-    const norm = path === '/' ? '/' : path.replace(/\/$/, '') || '/';
-    return menus.some(m => m === norm || m === path);
+    const norm = (path === '/' || path === '' || !path) ? '/' : (String(path).replace(/\/$/, '') || '/');
+    return menus.some(m => {
+      const mn = (m === '' || m === '/' || !m) ? '/' : (String(m).trim().replace(/\/$/, '') || '/');
+      return mn === norm || mn === path || m === norm || m === path;
+    });
   };
 
   const MENU_ORDER = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/approval-sequence', '/admin/permissions', '/admin/edit-history', '/admin/super'];

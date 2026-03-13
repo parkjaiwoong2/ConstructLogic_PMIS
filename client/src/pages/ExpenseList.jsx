@@ -73,6 +73,30 @@ export default function ExpenseList() {
 
   useEffect(() => { load(); }, [page, filter.from, filter.to, filter.status, filter.project, filter.account_item_name, filter.user_name, filter.description, filter.company_id]);
 
+  const handleExportExcel = async () => {
+    try {
+      const params = { ...filter };
+      Object.keys(params).forEach(k => { if (params[k] === '' || params[k] == null) delete params[k]; });
+      if (params.company_id) params.company_id = parseInt(params.company_id, 10) || undefined;
+      const res = await api.downloadExpensesExcel(params);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.error || res.statusText || '다운로드 실패');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `사용내역_${filter.from || ''}_${filter.to || ''}.xlsx`.replace(/__/g, '_').replace(/^_|_$/g, '') || '사용내역.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    } catch (err) {
+      alert(err?.message || '엑셀 출력 실패');
+    }
+  };
+
   const handleDelete = async (docId) => {
     if (!confirm('이 문서를 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.')) return;
     setDeleting(docId);
@@ -156,6 +180,7 @@ export default function ExpenseList() {
           <label className="filter-label">적요</label>
           <input type="text" value={filter.description} onChange={e => setFilter(f => ({ ...f, description: e.target.value }))} placeholder="적요 검색" style={{ minWidth: 160 }} />
           <button type="button" className="btn btn-primary" onClick={() => { setPage(1); load(1); }}>조회</button>
+          <button type="button" className="btn btn-primary" onClick={handleExportExcel} style={{ marginLeft: '0.25rem' }}>출력</button>
         </div>
       </section>
 

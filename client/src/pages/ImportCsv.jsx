@@ -17,6 +17,7 @@ export default function ImportCsv() {
   const [displayCompany, setDisplayCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [cardNo, setCardNo] = useState('');
+  const [cardOptions, setCardOptions] = useState([]);
   const [defaultCardNo, setDefaultCardNo] = useState('');
   const [defaultProjectName, setDefaultProjectName] = useState('');
   const [users, setUsers] = useState([]);
@@ -36,32 +37,50 @@ export default function ImportCsv() {
     if (userName) localStorage.setItem(CURRENT_USER_KEY, userName);
   }, [userName]);
 
+  const effectiveCompanyId = isAdmin ? (companyId || displayCompany?.company_id) : (displayCompany?.company_id ?? user?.company_id);
+
   useEffect(() => {
     if (!userName?.trim()) {
       setDisplayCompany(null);
       setDefaultCardNo('');
       setDefaultProjectName('');
       setCardNo('');
+      setCardOptions([]);
       return;
     }
     (async () => {
       try {
-        const [cards, settings, companyRes] = await Promise.all([
-          api.getUserCards(userName),
-          api.getUserSettings(userName),
+        const [companyRes, settings] = await Promise.all([
           api.getUserCompany(userName).catch(() => ({})),
+          api.getUserSettings(userName),
         ]);
-        setDisplayCompany(companyRes?.company_id ? { company_id: companyRes.company_id, company_name: companyRes.company_name } : null);
-        const defaultCard = Array.isArray(cards) && (cards.find(c => c.is_default) || cards[0]);
-        const dCard = defaultCard?.card_no || '';
+        const cr = companyRes;
+        setDisplayCompany(cr?.company_id ? { company_id: cr.company_id, company_name: cr.company_name } : null);
+
+        const cid = effectiveCompanyId || cr?.company_id || user?.company_id;
+        const [userCards, corporateCards] = await Promise.all([
+          api.getUserCards(userName, false, cid || undefined).catch(() => []),
+          cid ? api.getCorporateCards(cid).catch(() => []) : Promise.resolve([]),
+        ]);
+        const uc = Array.isArray(userCards) ? userCards : [];
+        const corp = Array.isArray(corporateCards) ? corporateCards : [];
+
+        const allCards = corp.map(c => ({ card_no: (c.card_no || '').trim(), label: c.label || c.card_no || '' })).filter(c => c.card_no);
+        const defaultCard = uc.find(c => c.is_default) || uc[0] || corp[0];
+        const dCard = defaultCard?.card_no?.trim() || '';
+        if (dCard && !allCards.some(c => c.card_no === dCard)) {
+          allCards.unshift({ card_no: dCard, label: defaultCard?.label || dCard });
+        }
+        setCardOptions(allCards);
         setDefaultCardNo(dCard);
         setCardNo(dCard);
-        const projects = await api.getProjects(companyRes?.company_id);
+
+        const projects = await api.getProjects(cr?.company_id || cid);
         const proj = Array.isArray(projects) && projects.find(p => p.id === settings?.default_project_id);
         setDefaultProjectName(proj?.name || '');
       } catch (e) { /* ignore */ }
     })();
-  }, [userName]);
+  }, [userName, effectiveCompanyId, user?.company_id]);
 
   /** 엑셀 복사는 탭 구분. 탭 우선 사용 시 숫자 내 '10,150' 천단위 쉼표가 컬럼 분리되지 않음 */
   const parseCsvLine = (line) => {
@@ -105,7 +124,6 @@ export default function ImportCsv() {
     return rows;
   };
 
-  const effectiveCompanyId = isAdmin ? (companyId || displayCompany?.company_id) : (displayCompany?.company_id ?? user?.company_id);
   const effectiveCardNo = (cardNo || defaultCardNo || '').trim();
 
   const handleImport = async () => {
@@ -124,7 +142,16 @@ export default function ImportCsv() {
         project_name: defaultProjectName || undefined,
         company_id: effectiveCompanyId || undefined,
       });
-      alert(`${r.count}건 임포트 완료. 문서번호: ${r.doc_no}`);
+      let msg = `${r.count}건 임포트 완료. 문서번호: ${r.doc_no}`;
+      if (r.corrected_items?.length) {
+        const correctionText = r.corrected_items.map(c =>
+          c.reason === '사용내역과 항목 불일치'
+            ? `${c.line}번째 라인: 사용내역과 항목이 맞지 않아 '${c.wrong}' → '${c.correct}'(으)로 수정하여 저장합니다.`
+            : `${c.line}번째 라인의 항목 '${c.wrong}'이(가) 사용내역 항목에 없어 '${c.correct}'(으)로 수정하여 저장합니다.`
+        ).join('\n');
+        msg = correctionText + '\n\n' + msg;
+      }
+      alert(msg);
       navigate(`/documents/${r.id}`);
     } catch (err) {
       alert(err.message || '임포트 실패');
@@ -167,12 +194,16 @@ export default function ImportCsv() {
         </div>
         <div className="form-row">
           <label className={!(cardNo || defaultCardNo)?.trim() ? 'required' : ''}>카드번호 <span className="req">*</span></label>
-          <input
+          <select
             value={cardNo}
             onChange={e => setCardNo(e.target.value)}
-            placeholder={defaultCardNo ? `기본: ${defaultCardNo}` : '카드번호 입력 (5585-****-****-****)'}
-            style={{ minWidth: 220 }}
-          />
+            style={{ minWidth: 260 }}
+          >
+            <option value="">{cardOptions.length ? '선택' : (userName ? '등록된 카드 없음' : '사용자 선택 후 표시')}</option>
+            {cardOptions.map(c => (
+              <option key={c.card_no} value={c.card_no}>{c.label || c.card_no}{c.label && c.label !== c.card_no ? ` (${c.card_no})` : ''}</option>
+            ))}
+          </select>
         </div>
         {userName && defaultProjectName && (
           <div className="form-row hint">

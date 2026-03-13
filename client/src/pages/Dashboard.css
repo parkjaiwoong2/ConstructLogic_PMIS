@@ -171,3 +171,177 @@
   padding: 2rem;
   color: var(--color-text-muted);
 }
+
+/* CEO 보고용: 화면에서는 숨기고 출력 시에만 표시 */
+.ceo-report-print-only {
+  display: none;
+}
+
+/* 그래프 출력 시 - CEO 보고용 레이아웃 (고정 높이 레이어 방식) */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  .dashboard .quick-actions,
+  .dashboard .no-print,
+  .dashboard .dashboard-controls,
+  .dashboard .page-header {
+    display: none !important;
+  }
+
+  .dashboard .ceo-report-print-only {
+    display: block !important;
+  }
+
+  /* A4 한 장 고정 높이 (273mm) - 레이어로 공간 분배, overflow 방지 */
+  .dashboard {
+    width: 100%;
+    max-width: 186mm;
+    margin: 0 auto;
+    padding: 0 6mm;
+    height: 273mm !important;
+    min-height: 273mm !important;
+    max-height: 273mm !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    display: grid !important;
+    grid-template-rows: 42px 1fr 82px 34px;
+    row-gap: 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .dashboard .ceo-report-print-only:first-of-type {
+    grid-row: 1;
+  }
+
+  .dashboard .dashboard-grid {
+    grid-row: 2;
+    display: grid !important;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    row-gap: 12px;
+    min-height: 0;
+  }
+
+  .dashboard .ceo-report-evaluation {
+    grid-row: 3;
+  }
+
+  .dashboard .ceo-report-footer {
+    grid-row: 4;
+  }
+
+  .dashboard .card-chart {
+    overflow: visible !important;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0.25rem 0.5rem !important;
+  }
+
+  .dashboard .card-chart h2 {
+    padding: 0 0.5rem !important;
+    margin: 0 0 0.1rem !important;
+    flex-shrink: 0;
+  }
+
+  .dashboard .chart-container {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    height: 100% !important;
+    padding-left: 16px;
+    display: flex;
+    justify-content: flex-start;
+    transform: scale(0.72);
+    transform-origin: left center;
+  }
+
+  /* 항목별 지출: 왼쪽 정렬, 가로 1.2배 확대 */
+  .dashboard .dashboard-grid .card-chart:nth-child(1) .chart-container {
+    transform: scale(0.864, 0.72);
+    transform-origin: left center;
+    align-self: flex-start;
+  }
+
+  /* 현장(건)별 지출: 왼쪽 정렬, 데이터 짤림 방지 */
+  .dashboard .dashboard-grid .card-chart:nth-child(2) .chart-container {
+    transform: scale(0.864, 0.72);
+    transform-origin: left center;
+    align-self: flex-start;
+  }
+
+  .dashboard .dashboard-grid .card-chart:nth-child(2) {
+    overflow: visible !important;
+    justify-content: flex-start;
+  }
+
+  /* 월별 차트: 그래프 가로 길이 2.5배 축소, 왼쪽 정렬 */
+  .dashboard .card-chart.card-full .chart-container {
+    transform: scaleX(0.4);
+    transform-origin: left center;
+    overflow: visible !important;
+    align-self: flex-start;
+  }
+
+  .ceo-report-cover {
+    text-align: center;
+    padding: 0.2rem 0;
+    border-bottom: 2px solid #1e5a8e;
+  }
+
+  .ceo-report-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #1e3a5f;
+    margin: 0 0 0.15rem;
+  }
+
+  .ceo-report-sub {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin: 0;
+  }
+
+  .ceo-report-footer {
+    display: flex;
+    justify-content: flex-start;
+    padding-top: 0.4rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .ceo-report-evaluation {
+    margin: 0;
+    padding: 0.35rem 0.6rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    border-left: 4px solid #1e5a8e;
+  }
+
+  .ceo-report-evaluation h3 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 0 0 0.35rem;
+    color: #1e3a5f;
+  }
+
+  .ceo-report-evaluation p {
+    font-size: 0.72rem;
+    line-height: 1.5;
+    margin: 0;
+    color: #334155;
+  }
+
+  .dashboard .recharts-wrapper,
+  .dashboard .recharts-surface {
+    overflow: visible !important;
+  }
+}
+
+

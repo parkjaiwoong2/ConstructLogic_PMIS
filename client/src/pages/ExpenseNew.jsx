@@ -105,8 +105,10 @@ export default function ExpenseNew() {
     ? (form.company_id && companies.find(c => String(c.id) === form.company_id)) || displayCompany
     : displayCompany || (user?.company_id ? { company_id: user.company_id, company_name: companies.find(c => c.id === user.company_id)?.name } : null);
 
+  const effectiveCompanyId = effectiveCompany?.company_id ?? effectiveCompany?.id;
+
   useEffect(() => {
-    const cid = effectiveCompany?.company_id;
+    const cid = effectiveCompanyId;
     const userName = form.user_name?.trim();
     if (!cid) {
       setProjectsForCompany([]);
@@ -133,7 +135,7 @@ export default function ExpenseNew() {
       }
     });
     return () => { cancelled = true; };
-  }, [effectiveCompany?.company_id, form.user_name, isEdit]);
+  }, [effectiveCompanyId, form.user_name, isEdit]);
 
   useEffect(() => {
     if (isEdit && id) {

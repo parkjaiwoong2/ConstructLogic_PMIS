@@ -45,6 +45,12 @@ export const api = {
       : '';
     return fetch(`${API}/export/batch-approval-excel${q}`, { headers: getAuthHeader() });
   },
+  downloadExpensesExcel: (params) => {
+    const q = params && Object.keys(params).length
+      ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))).toString()
+      : '';
+    return fetch(`${API}/export/expenses-excel${q}`, { headers: getAuthHeader() });
+  },
   getUsers: () => fetchJson(`${API}/users`),
   getExpenses: (params) => {
     const q = new URLSearchParams(

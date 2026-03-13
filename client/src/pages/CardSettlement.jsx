@@ -280,7 +280,7 @@ export default function CardSettlement() {
             <input type="radio" name="excelOutputMode" value="by_item" checked={excelOutputMode === 'by_item'} onChange={e => setExcelOutputMode(e.target.value)} />
             <span>개별</span>
           </label>
-          <button type="button" className="btn btn-primary" onClick={handleBatchExcel}>일괄결제출력</button>
+          <button type="button" className="btn btn-primary" onClick={handleBatchExcel}>출력(결재)</button>
         </span>
       </div>
 

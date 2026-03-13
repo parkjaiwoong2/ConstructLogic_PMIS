@@ -10,7 +10,7 @@ export default function Settings() {
   const { user } = useAuth();
   const isAdmin = user?.is_admin === true;
   const selfName = user?.name || '';
-  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem(CURRENT_USER_KEY) || '');
+  const [currentUser, setCurrentUser] = useState(() => selfName || localStorage.getItem(CURRENT_USER_KEY) || '');
   const [users, setUsers] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [companyId, setCompanyId] = useState('');
@@ -91,7 +91,8 @@ export default function Settings() {
   }, [effectiveUser, companyId]);
 
   const singleCompanyOnly = companies.length === 1;
-  const effectiveCompanyId = showCompanySelect ? (companyId ? parseInt(companyId, 10) : null) : (user?.company_id ?? null);
+  // 회사 콤보 선택값 우선 → 기본 현장 콤보에 해당 회사의 현장만 표시
+  const effectiveCompanyId = (companyId ? parseInt(companyId, 10) : null) || (user?.company_id ?? null);
   const canManageCards = !!effectiveCompanyId;
 
   useEffect(() => {

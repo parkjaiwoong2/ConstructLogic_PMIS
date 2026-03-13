@@ -108,11 +108,11 @@ app.get('/api/auth/me', async (req, res) => {
     } else if (isCompanyAdmin) {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
       const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, 'company_admin']) : [];
-      menus = (rows || []).map(r => r.menu_path);
+      menus = (rows || []).map(r => (r.menu_path || '').trim()).filter(Boolean);
     } else {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
       const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, user.role]) : [];
-      menus = (rows || []).map(r => r.menu_path);
+      menus = (rows || []).map(r => (r.menu_path || '').trim()).filter(Boolean);
     }
     const company = companyRow ? { ...COMPANY_DEFAULTS, ...companyRow } : COMPANY_DEFAULTS;
     let subscription = null;
@@ -734,6 +734,98 @@ app.get('/api/expenses', async (req, res) => {
   }
 });
 
+/** 사용내역 조회 - 개별사용내역 형식 엑셀 출력 (법인카드 관리 출력(결재) 개별과 동일) */
+app.get('/api/export/expenses-excel', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const { from, to, project, account_item_id, account_item_name, user_name, description, company_id } = req.query;
+  const parsed = require('url').parse(req.url || '', true);
+  const status = (parsed.query && parsed.query.status) || req.query.status;
+  try {
+    const cond = [];
+    const params = [];
+    let joinClause = 'FROM expense_items ei LEFT JOIN expense_documents ed ON ed.id = ei.document_id';
+    const companyIds = (company_id == null || company_id === '') && req.user?.id
+      ? await getCurrentUserCompanyIds(req.user.id)
+      : null;
+    const companyFilter = buildCompanyFilterJoin(company_id, companyIds, params);
+    if (companyFilter) { joinClause += companyFilter.join; cond.push(companyFilter.whereCond); }
+    const validStatuses = ['draft', 'pending', 'approved', 'rejected'];
+    const statusVal = typeof status === 'string' ? status.trim() : '';
+    if (statusVal && validStatuses.includes(statusVal)) {
+      params.push(statusVal);
+      cond.push(`ed.status = $${params.length}`);
+    } else {
+      cond.push("ed.status IN ('approved','pending','draft','rejected')");
+    }
+    if (from) { params.push(from); cond.push(`ei.use_date >= $${params.length}`); }
+    if (to) { params.push(to); cond.push(`ei.use_date <= $${params.length}`); }
+    if (project) { params.push(project); cond.push(`ei.project_name = $${params.length}`); }
+    if (account_item_id) { params.push(account_item_id); cond.push(`ei.account_item_id = $${params.length}`); }
+    else if (account_item_name) { params.push(account_item_name); cond.push(`ei.account_item_name = $${params.length}`); }
+    if (user_name) { params.push(`%${user_name}%`); cond.push(`ed.user_name ILIKE $${params.length}`); }
+    if (description) { params.push(`%${description}%`); cond.push(`ei.description ILIKE $${params.length}`); }
+    const whereClause = cond.join(' AND ');
+    const selectCols = 'ei.id as item_id, ed.status, ed.user_name, ei.use_date, ei.project_name, ei.account_item_name, ei.description, ei.card_amount, ei.cash_amount, ei.total_amount';
+    const items = await db.query(
+      `SELECT ${selectCols} ${joinClause} WHERE ${whereClause} ORDER BY ei.use_date DESC, ei.id LIMIT 10000`,
+      params
+    );
+    const ExcelJS = require('exceljs');
+    const thinBorder = { style: 'thin', color: { argb: 'FF000000' } };
+    const fullBorder = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+    const applyGridBorders = (ws, r1, c1, r2, c2) => {
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) ws.getCell(r, c).border = fullBorder;
+    };
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('개별사용내역', { views: [{ showGridLines: true }] });
+    const statusLabel = (s) => { const m = { draft: '작성중', pending: '결재대기', approved: '승인', rejected: '반려' }; return m[s] || s || '-'; };
+    ws.columns = [
+      { width: 12 }, { width: 14 }, { width: 14 }, { width: 22 }, { width: 12 }, { width: 12 }, { width: 12 },
+      { width: 12 }, { width: 12 },
+    ];
+    const headers = ['사용일', '현장', '항목', '적요', '카드', '현금', '합계', '사용자', '상태'];
+    headers.forEach((h, c) => { ws.getCell(1, c + 1).value = h; ws.getCell(1, c + 1).font = { bold: true }; });
+    applyGridBorders(ws, 1, 1, 1, 9);
+    (items || []).forEach((i, idx) => {
+      const r = idx + 2;
+      ws.getCell(r, 1).value = i.use_date || '';
+      ws.getCell(r, 2).value = i.project_name || '';
+      ws.getCell(r, 3).value = i.account_item_name || '';
+      ws.getCell(r, 4).value = i.description || '';
+      ws.getCell(r, 5).value = i.card_amount ?? 0;
+      ws.getCell(r, 6).value = i.cash_amount ?? 0;
+      ws.getCell(r, 7).value = i.total_amount ?? 0;
+      ws.getCell(r, 8).value = i.user_name || '';
+      ws.getCell(r, 9).value = statusLabel(i.status || '');
+      [5, 6, 7].forEach(col => { ws.getCell(r, col).numFmt = '#,##0'; });
+    });
+    const dataEndRow = (items || []).length > 0 ? (items || []).length + 1 : 1;
+    if ((items || []).length > 0) {
+      const totalRow = dataEndRow + 1;
+      ws.getCell(totalRow, 1).value = '합계';
+      ws.getCell(totalRow, 5).value = (items || []).reduce((s, i) => s + (i.card_amount || 0), 0);
+      ws.getCell(totalRow, 6).value = (items || []).reduce((s, i) => s + (i.cash_amount || 0), 0);
+      ws.getCell(totalRow, 7).value = (items || []).reduce((s, i) => s + (i.total_amount || 0), 0);
+      [5, 6, 7].forEach(col => { ws.getCell(totalRow, col).numFmt = '#,##0'; ws.getCell(totalRow, col).font = { bold: true }; });
+      applyGridBorders(ws, 2, 1, totalRow, 9);
+    } else {
+      ws.getCell(2, 1).value = '조회된 데이터가 없습니다.';
+      ws.mergeCells(2, 1, 2, 9);
+      ws.getCell(2, 1).alignment = { horizontal: 'center' };
+      applyGridBorders(ws, 2, 1, 2, 9);
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    const fnFrom = (from || '').replace(/-/g, '').slice(0, 6);
+    const fnTo = (to || '').replace(/-/g, '').slice(0, 6);
+    const fn = (fnFrom && fnTo) ? `사용내역_${fnFrom}_${fnTo}.xlsx` : '사용내역.xlsx';
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fn)}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(Buffer.from(buf));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/dashboard/summary', async (req, res) => {
   const { from, to, project, company_id } = req.query;
   try {
@@ -788,21 +880,95 @@ app.post('/api/import/csv', async (req, res) => {
     }
     const accountItems = await db.query(accountItemsSql, accountParams);
     const nameToId = {};
+    const accountNames = accountItems.map(a => (a.name || '').trim()).filter(Boolean);
     accountItems.forEach(a => { nameToId[(a.name || '').trim()] = a.id; });
-    const items = rows.map(r => {
+    const fallbackItem = accountItems.find(a => /기타/i.test((a.name || '').trim())) || accountItems[0];
+    const fallbackName = fallbackItem ? (fallbackItem.name || '').trim() : '';
+    const fallbackId = fallbackItem ? fallbackItem.id : null;
+    const findBestMatch = (csvName) => {
+      const t = (csvName || '').trim();
+      if (!t) return null;
+      if (nameToId[t]) return { id: nameToId[t], name: t };
+      const partial = accountNames.find(n => n.includes(t) || t.includes(n));
+      if (partial) return { id: nameToId[partial], name: partial };
+      return fallbackId ? { id: fallbackId, name: fallbackName } : null;
+    };
+    const BUILTIN_KEYWORDS = [
+      { kw: '중식', name: '복리후생비' }, { kw: '조식', name: '복리후생비' }, { kw: '석식', name: '복리후생비' },
+      { kw: '회식', name: '복리후생비' }, { kw: '식대', name: '복리후생비' }, { kw: '식권', name: '복리후생비' },
+      { kw: '음료', name: '복리후생비' }, { kw: '커피', name: '복리후생비' }, { kw: '라면', name: '복리후생비' },
+      { kw: '햇반', name: '복리후생비' }, { kw: '기름', name: '유류대' }, { kw: '주유', name: '유류대' },
+      { kw: '유류', name: '유류대' }, { kw: '요소수', name: '유류대' }, { kw: '차량', name: '유류대' },
+      { kw: '등기', name: '통신비' }, { kw: '택배', name: '통신비' }, { kw: '우편', name: '통신비' },
+      { kw: '하이패스', name: '여비교통비' },
+    ];
+    const suggestAccountFromDescription = async (desc) => {
+      const d = (desc || '').trim();
+      if (!d) return null;
+      let suggestedName = null;
+      try {
+        const rule = await db.queryOne(`
+          SELECT ai.id, ai.name FROM account_mapping_rules amr
+          JOIN account_items ai ON ai.id = amr.account_item_id
+          WHERE $1 LIKE '%' || amr.keyword || '%'
+          ORDER BY amr.priority DESC, LENGTH(amr.keyword) DESC
+          LIMIT 1
+        `, [d]);
+        if (rule) suggestedName = (rule.name || '').trim();
+      } catch { /* ignore */ }
+      if (!suggestedName) {
+        const builtin = BUILTIN_KEYWORDS.find(({ kw }) => d.includes(kw));
+        if (builtin) suggestedName = builtin.name;
+      }
+      if (!suggestedName) return null;
+      const inOurList = accountItems.find(a => (a.name || '').trim() === suggestedName);
+      if (inOurList) return { id: inOurList.id, name: suggestedName };
+      const partial = accountNames.find(n => n.includes(suggestedName) || suggestedName.includes(n));
+      if (partial) return { id: nameToId[partial], name: partial };
+      return null;
+    };
+    const correctedItems = [];
+    const items = [];
+    for (let idx = 0; idx < rows.length; idx++) {
+      const r = rows[idx];
       const card = safeInt(r.card_amount);
       const cash = safeInt(r.cash_amount);
-      const aid = nameToId[(r.account_item_name || '').trim()];
-      return {
+      const desc = (r.description || '').trim();
+      const csvAccName = (r.account_item_name || '').trim();
+      let aid = nameToId[csvAccName];
+      let accName = csvAccName;
+      const suggested = await suggestAccountFromDescription(desc);
+      if (suggested && csvAccName) {
+        const suggestedNorm = (suggested.name || '').trim();
+        const csvNorm = csvAccName;
+        const same = suggestedNorm === csvNorm || accountNames.some(n => n === csvNorm && n === suggestedNorm);
+        if (!same && nameToId[csvNorm] != null) {
+          aid = suggested.id;
+          accName = suggested.name;
+          correctedItems.push({ line: idx + 1, wrong: csvAccName, correct: suggested.name, reason: '사용내역과 항목 불일치' });
+        }
+      }
+      if ((aid == null || Number.isNaN(aid)) && csvAccName) {
+        const best = findBestMatch(csvAccName);
+        if (best) {
+          aid = best.id;
+          accName = best.name;
+          correctedItems.push({ line: idx + 1, wrong: csvAccName, correct: best.name });
+        }
+      }
+      const item = {
         use_date: (r.use_date || '').trim(),
         project_name: (r.project_name || '').trim(),
-        account_item_name: (r.account_item_name || '').trim(),
+        account_item_name: accName,
         account_item_id: (aid != null && !Number.isNaN(aid)) ? aid : null,
-        description: (r.description || '').trim(),
+        description: desc,
         card_amount: card,
         cash_amount: cash,
       };
-    }).filter(i => i.use_date && i.account_item_name && (i.card_amount || i.cash_amount));
+      if (item.use_date && item.account_item_name && (item.card_amount || item.cash_amount)) {
+        items.push(item);
+      }
+    }
     if (items.length === 0) return res.status(400).json({ error: '유효한 데이터 없음' });
     const project_name = (defaultProjectName && String(defaultProjectName).trim()) || items[0].project_name || '미지정';
     if (defaultProjectName && String(defaultProjectName).trim()) {
@@ -833,7 +999,7 @@ app.post('/api/import/csv', async (req, res) => {
       return { ...i, card_amount: card, cash_amount: cash, total_amount: card + cash, account_item_id: safeId(i.account_item_id) || i.account_item_id };
     });
     await db.insertExpenseItemsCsv(null, csvItems, docId);
-    res.json({ id: docId, doc_no: docNo, count: items.length });
+    res.json({ id: docId, doc_no: docNo, count: items.length, corrected_items: correctedItems });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1367,9 +1533,12 @@ async function getCompaniesForUser(user) {
   );
 }
 
-/** 자신이 속한 회사만 조회 (슈퍼관리자 포함) */
+/** 자신이 속한 회사만 조회. 슈퍼관리자는 전체 회사 반환 (역할관리 등에서 회사 선택 가능하도록) */
 async function getCompaniesForUserMine(user) {
   if (!user?.id) return [];
+  if (user.is_admin === true) {
+    return db.query('SELECT id, name, is_default FROM companies ORDER BY is_default DESC, id');
+  }
   const ids = await getCompanyIdsForUserIncludingSameEmail(user.id);
   if (ids.length === 0) return [];
   return db.query(
@@ -2318,8 +2487,9 @@ app.delete('/api/admin/subscription-plans/:id', requireAdmin, async (req, res) =
 
 app.get('/api/export/batch-approval-excel', async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const { period_from, period_to, status, project, card_no, company_id, output_mode } = req.query;
-  const mode = (output_mode === 'by_item') ? 'by_item' : 'by_document';
+  const { period_from, period_to, status, project, card_no, company_id } = req.query;
+  // 문서별/개별 선택과 무관하게 카드사용내역서(문서별) 형식으로 출력
+  const mode = 'by_document';
   try {
     const ExcelJS = require('exceljs');
     const companyId = company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
