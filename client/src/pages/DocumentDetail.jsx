@@ -176,7 +176,7 @@ export default function DocumentDetail() {
           <p className="approval-status-text">
             {doc.status === 'pending' && '결재 진행 중입니다. 결재자가 검토 후 처리합니다.'}
             {doc.status === 'pending' && !approvalConfigured && (
-              <span className="approval-hint"> 결재선이 설정되지 않아 결재가 진행되지 않습니다. 설정 → 결재순서에서 결재선을 추가해 주세요.</span>
+              <span className="approval-hint"> 결재선이 설정되지 않아 결재가 진행되지 않습니다. <Link to="/admin/approval-sequence">결재순서</Link>에서 결재선을 추가해 주세요.</span>
             )}
             {doc.status === 'pending' && approvalConfigured && (
               <span className="approval-hint"> 결재자는 <Link to="/approval-processing?tab=approval"><strong>결재함</strong></Link> 탭에서 문서를 확인 후 승인/반려할 수 있습니다.</span>
@@ -324,7 +324,7 @@ export default function DocumentDetail() {
               {doc.status === 'pending' && !approvalConfigured && (
                 <div className="approval-modal-warning">
                   <p><strong>결재선이 설정되지 않았습니다.</strong></p>
-                  <p>설정 → 결재순서에서 결재선을 추가해 주세요. (자동승인 사용 시 결재 요청 시 즉시 승인됩니다.)</p>
+                  <p><Link to="/admin/approval-sequence">결재순서</Link>에서 결재선을 추가해 주세요. (자동승인 사용 시 결재 요청 시 즉시 승인됩니다.)</p>
                   <p>결재자는 결재처리 → <strong>결재함</strong> 탭에서 문서를 확인 후 승인/반려할 수 있습니다.</p>
                 </div>
               )}

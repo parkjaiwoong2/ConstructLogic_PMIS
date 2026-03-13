@@ -11,8 +11,9 @@ const ALL_MENUS = [
   { path: '/approval-processing', label: '결재처리' },
   { path: '/card-management', label: '법인카드 관리' },
   { path: '/masters', label: '마스터 관리' },
-  { path: '/settings', label: '설정' },
+  { path: '/settings', label: '내설정' },
   { path: '/admin/company', label: '회사정보관리' },
+  { path: '/admin/approval-sequence', label: '결재순서' },
   { path: '/admin/permissions', label: '권한관리' },
 ];
 

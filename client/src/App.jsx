@@ -80,7 +80,7 @@ export default function App() {
         <Route path="admin/permissions" element={<ProtectedRoute path="/admin/permissions"><ErrorBoundary><AdminPermissions /></ErrorBoundary></ProtectedRoute>} />
         <Route path="admin/users" element={<Navigate to="/admin/permissions" replace />} />
         <Route path="admin/role-permissions" element={<Navigate to="/admin/permissions" replace />} />
-        <Route path="admin/approval-sequence" element={<Navigate to="/settings?tab=approval-sequence" replace />} />
+        <Route path="admin/approval-sequence" element={<ProtectedRoute path="/admin/approval-sequence"><ErrorBoundary><AdminApprovalSequence /></ErrorBoundary></ProtectedRoute>} />
         <Route path="admin/edit-history" element={<ProtectedRoute path="/admin/edit-history"><AdminEditHistory /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

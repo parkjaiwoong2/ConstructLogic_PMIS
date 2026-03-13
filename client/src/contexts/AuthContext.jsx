@@ -64,8 +64,8 @@ export function AuthProvider({ children }) {
     return menus.some(m => m === norm || m === path);
   };
 
-  const MENU_ORDER = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/permissions', '/admin/edit-history', '/admin/super'];
-  const ADMIN_PATHS = ['/admin/company', '/admin/permissions', '/admin/edit-history', '/admin/super'];
+  const MENU_ORDER = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/approval-sequence', '/admin/permissions', '/admin/edit-history', '/admin/super'];
+  const ADMIN_PATHS = ['/admin/company', '/admin/approval-sequence', '/admin/permissions', '/admin/edit-history', '/admin/super'];
   const SUPER_ONLY_PATHS = ['/admin/super'];
   const firstAccessiblePath = (() => {
     if (!user) return '/';

@@ -95,7 +95,7 @@ app.get('/api/auth/me', async (req, res) => {
     const isCompanyAdmin = user.role === 'admin' && !user.is_admin;
     let menus;
     if (isSuperAdmin) {
-      menus = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/permissions', '/admin/edit-history', '/admin/super'];
+      menus = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/approval-sequence', '/admin/permissions', '/admin/edit-history', '/admin/super'];
     } else if (isCompanyAdmin) {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
       const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, 'company_admin']) : [];
