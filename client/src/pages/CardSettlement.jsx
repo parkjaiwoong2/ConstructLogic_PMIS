@@ -45,6 +45,7 @@ export default function CardSettlement() {
     return { period_from, period_to, project: '', settled: '', company_id: '' };
   });
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [excelOutputMode, setExcelOutputMode] = useState('by_document');
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
 
@@ -101,7 +102,7 @@ export default function CardSettlement() {
   }, [filter.company_id]);
 
   useEffect(() => {
-    api.getCompanies({ list: 1 }).then(list => {
+    api.getCompanies({ list: 1, mine: 1 }).then(list => {
       const arr = list || [];
       setCompanies(arr);
       setFilter(prev => {
@@ -156,7 +157,7 @@ export default function CardSettlement() {
 
   const handleBatchExcel = async () => {
     try {
-      const params = { status: 'approved' };
+      const params = { status: 'approved', output_mode: excelOutputMode };
       if (filter.period_from) params.period_from = filter.period_from;
       if (filter.period_to) params.period_to = filter.period_to;
       if (filter.project) params.project = filter.project;
@@ -271,7 +272,17 @@ export default function CardSettlement() {
           <option value="y">정산완료</option>
         </select>
         <button type="button" className="btn btn-primary" onClick={handleSearch}>조회</button>
-        <button type="button" className="btn btn-primary" onClick={handleBatchExcel}>일괄결제출력</button>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.5rem' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+            <input type="radio" name="excelOutputMode" value="by_document" checked={excelOutputMode === 'by_document'} onChange={e => setExcelOutputMode(e.target.value)} />
+            <span>문서별</span>
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+            <input type="radio" name="excelOutputMode" value="by_item" checked={excelOutputMode === 'by_item'} onChange={e => setExcelOutputMode(e.target.value)} />
+            <span>개별</span>
+          </label>
+          <button type="button" className="btn btn-primary" onClick={handleBatchExcel}>일괄결제출력</button>
+        </span>
       </div>
 
       <div className="settlement-action-row" style={{ marginBottom: '0.5rem', fontSize: '0.95rem', color: 'var(--color-text-muted, #64748b)' }}>

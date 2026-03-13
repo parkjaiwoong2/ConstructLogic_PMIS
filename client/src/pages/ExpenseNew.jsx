@@ -57,7 +57,7 @@ export default function ExpenseNew() {
         const [items, projs, comps] = await Promise.all([
           api.getAccountItems(),
           api.getProjects(),
-          api.getCompanies({ list: 1 }).catch(() => []),
+          api.getCompanies({ list: 1, mine: 1 }).catch(() => []),
         ]);
         if (!cancelled) {
           setAccountItems(items);

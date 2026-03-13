@@ -31,7 +31,7 @@ export default function AdminEditHistory() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.getCompanies({ list: 1 }).then(list => {
+    api.getCompanies({ list: 1, mine: 1 }).then(list => {
       setCompanies(list || []);
       const def = (list || []).find(c => c.is_default) || (list || [])[0];
       if (def) setCompanyId(String(def.id));

@@ -100,7 +100,7 @@ export default function ExpenseList() {
 
   useEffect(() => {
     api.getUsers().then(setUsers).catch(() => []);
-    api.getCompanies({ list: 1 }).then(list => {
+    api.getCompanies({ list: 1, mine: 1 }).then(list => {
       const arr = list || [];
       setCompanies(arr);
       setFilter(prev => {

@@ -24,7 +24,7 @@ export default function ImportCsv() {
 
   useEffect(() => {
     api.getUsers().then(setUsers).catch(() => []);
-    api.getCompanies({ list: 1 }).then(list => {
+    api.getCompanies({ list: 1, mine: 1 }).then(list => {
       const arr = Array.isArray(list) ? list : [];
       setCompanies(arr);
       const def = arr.length === 1 ? arr[0] : (arr.find(c => c.id === user?.company_id) || arr[0]);

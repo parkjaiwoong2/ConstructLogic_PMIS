@@ -17,7 +17,7 @@ export default function AdminCorporateCards() {
 
   const loadCompanies = async () => {
     try {
-      const list = await api.getCompanies({ list: 1 }) || [];
+      const list = await api.getCompanies({ list: 1, mine: 1 }) || [];
       setCompanies(list);
       const arr = list;
       const def = arr.length === 1 ? arr[0] : (arr.find(c => c.id === user?.company_id) || arr[0]);

@@ -80,7 +80,7 @@ export default function DocumentList() {
 
   useEffect(() => {
     api.getUsers().then(setUsers).catch(() => setUsers([]));
-    api.getCompanies({ list: 1 }).then(list => {
+    api.getCompanies({ list: 1, mine: 1 }).then(list => {
       const arr = list || [];
       setCompanies(arr);
       setFilter(prev => {

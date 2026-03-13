@@ -17,7 +17,7 @@ export default function Masters() {
   const [newProject, setNewProject] = useState({ name: '' });
 
   useEffect(() => {
-    api.getCompanies({ list: 1 }).then(list => {
+    api.getCompanies({ list: 1, mine: 1 }).then(list => {
       const arr = Array.isArray(list) ? list : [];
       setCompanies(arr);
       const def = arr.find(c => String(c.id) === String(user?.company_id)) || arr.find(c => c.is_default) || arr[0];
