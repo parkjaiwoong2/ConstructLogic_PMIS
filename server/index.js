@@ -64,7 +64,7 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-const COMPANY_DEFAULTS = { name: 'Construct Logic', logo_url: null, address: null, ceo_name: null, founded_date: null, business_reg_no: null, tel: null, fax: null, email: null, copyright_text: null };
+const COMPANY_DEFAULTS = { name: 'PMIS', logo_url: null, address: null, ceo_name: null, founded_date: null, business_reg_no: null, tel: null, fax: null, email: null, copyright_text: null };
 
 app.get('/api/companies', async (req, res) => {
   try {

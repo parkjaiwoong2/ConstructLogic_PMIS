@@ -1,4 +1,4 @@
--- Construct Logic PMIS - PostgreSQL (Supabase) Schema
+-- PMIS - PostgreSQL (Supabase) Schema
 
 -- 회사 정보 (관리자 등록, 멀티 지원)
 CREATE TABLE IF NOT EXISTS companies (

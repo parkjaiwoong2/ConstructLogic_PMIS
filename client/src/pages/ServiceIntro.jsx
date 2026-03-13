@@ -5,13 +5,13 @@ import { api } from '../api';
 import './Main.css';
 
 export default function ServiceIntro() {
-  const [company, setCompany] = useState({ name: 'Construct Logic', logo_url: null });
+  const [company, setCompany] = useState({ name: 'PMIS', logo_url: null });
   const { user, loading } = useAuth();
   const location = useLocation();
   const isService = location.pathname === '/service';
 
   useEffect(() => {
-    api.getCompanies().then(c => setCompany(c || { name: 'Construct Logic', logo_url: null })).catch(() => {});
+    api.getCompanies().then(c => setCompany(c || { name: 'PMIS', logo_url: null })).catch(() => {});
   }, []);
 
   if (loading) return <div className="main-page"><div className="main-loading">로딩 중...</div></div>;
@@ -40,7 +40,7 @@ export default function ServiceIntro() {
 
       {/* Service Introduction (카드 + 상세 사용법) */}
       <section className="main-service-section" id="service">
-        <h2 className="main-service-headline">건설사마다 반복되는 업무, Construct Logic 하나로 끝내세요.</h2>
+        <h2 className="main-service-headline">건설사마다 반복되는 업무, PMIS 하나로 끝내세요.</h2>
         <p className="main-service-subhead">사용내역 입력부터 결재·집계까지, 건설사의 시간을 잡아먹는 반복 업무를 한곳에서 통합 관리하세요.</p>
         <div className="main-service-cards">
           <div className="main-service-card">

@@ -37,7 +37,7 @@ export default function Pricing() {
       {isStandalone && (
         <header className="pricing-header">
           <div className="pricing-header-inner">
-            <Link to="/" className="pricing-logo" title="메인으로">Construct Logic</Link>
+            <Link to="/" className="pricing-logo" title="메인으로">PMIS</Link>
             <nav className="pricing-nav">
               <Link to="/service">서비스소개</Link>
               <Link to="/pricing" className="active">요금안내</Link>
@@ -54,7 +54,7 @@ export default function Pricing() {
       <div className="pricing-content">
         <div className="pricing-hero">
           <h1 className="pricing-title">요금안내</h1>
-          <p className="pricing-subtitle">사용내역부터 결재까지 Construct Logic 하나로 관리하세요.</p>
+          <p className="pricing-subtitle">사용내역부터 결재까지 PMIS 하나로 관리하세요.</p>
         </div>
 
         {/* Filters */}

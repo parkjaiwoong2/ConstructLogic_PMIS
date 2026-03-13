@@ -11,7 +11,7 @@ export default function Support() {
       {isStandalone && (
         <header className="support-header">
           <div className="support-header-inner">
-            <Link to="/" className="support-logo" title="메인으로">Construct Logic</Link>
+            <Link to="/" className="support-logo" title="메인으로">PMIS</Link>
             <nav className="support-nav">
               <Link to="/service">서비스소개</Link>
               <Link to="/pricing">요금안내</Link>

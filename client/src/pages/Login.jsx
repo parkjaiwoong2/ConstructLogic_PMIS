@@ -1,21 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import './Login.css';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [company, setCompany] = useState({ name: 'Construct Logic', logo_url: null });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login, user, firstAccessiblePath, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    api.getCompanies().then(setCompany).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -44,8 +38,7 @@ export default function Login() {
   return (
     <div className="login-page">
       <Link to="/" className="login-brand" title="메인으로">
-        {company.logo_url && <img src={company.logo_url} alt="" className="login-logo" />}
-        <h1 className="login-company-name">{company.name}</h1>
+        <h1 className="login-company-name">PMIS</h1>
         <p className="login-tagline">건설 프로젝트 관리 정보 시스템</p>
       </Link>
       <form className="login-form" onSubmit={handleSubmit}>

@@ -4,13 +4,10 @@ import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import './Login.css';
 
-const defaultCompany = { name: 'Construct Logic', logo_url: null };
-
 export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [company, setCompany] = useState(defaultCompany);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -18,10 +15,6 @@ export default function Signup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const planParam = searchParams.get('plan');
-
-  useEffect(() => {
-    api.getCompanies().then(c => setCompany(c ? { ...defaultCompany, ...c } : defaultCompany)).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (user && !authLoading) navigate('/', { replace: true });
@@ -48,8 +41,7 @@ export default function Signup() {
     return (
       <div className="login-page">
         <Link to="/" className="login-brand" title="메인으로">
-          {company.logo_url && <img src={company.logo_url} alt="" className="login-logo" />}
-          <h1 className="login-company-name">{company.name}</h1>
+          <h1 className="login-company-name">PMIS</h1>
         </Link>
         <div className="login-form">
           <h2>가입 완료</h2>
@@ -66,8 +58,7 @@ export default function Signup() {
   return (
     <div className="login-page">
       <Link to="/" className="login-brand" title="메인으로">
-        {company.logo_url && <img src={company.logo_url} alt="" className="login-logo" />}
-        <h1 className="login-company-name">{company.name}</h1>
+        <h1 className="login-company-name">PMIS</h1>
         <p className="login-tagline">회원가입</p>
       </Link>
       <form className="login-form" onSubmit={handleSubmit}>

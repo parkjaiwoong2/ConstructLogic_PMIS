@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import './Layout.css';
 
-const DEFAULT_COMPANY = { name: 'Construct Logic', logo_url: null };
+const DEFAULT_COMPANY = { name: 'PMIS', logo_url: null };
 
 const MENUS = [
   { to: '/', end: true, label: '대시보드' },

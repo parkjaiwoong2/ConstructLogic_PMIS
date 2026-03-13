@@ -21,7 +21,7 @@ async function run() {
   if (!c) c = await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1');
   let companyId = c?.id;
   if (!companyId) {
-    const ins = await db.run('INSERT INTO companies (name, is_default) VALUES ($1, true) RETURNING id', ['Construct Logic']);
+    const ins = await db.run('INSERT INTO companies (name, is_default) VALUES ($1, true) RETURNING id', ['PMIS']);
     companyId = ins.rows[0].id;
   } else {
     await db.run('UPDATE companies SET is_default = false');
@@ -37,8 +37,8 @@ async function run() {
   ];
   for (const r of defaultRoles) {
     await db.run(
-      'INSERT INTO roles (code, label, display_order) VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING',
-      [r.code, r.label, r.order]
+      'INSERT INTO roles (company_id, code, label, display_order) VALUES ($1, $2, $3, $4) ON CONFLICT (company_id, code) DO NOTHING',
+      [companyId, r.code, r.label, r.order]
     );
   }
 
