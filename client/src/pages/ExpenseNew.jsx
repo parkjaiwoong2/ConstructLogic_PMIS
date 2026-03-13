@@ -20,9 +20,7 @@ export default function ExpenseNew() {
   const isAdmin = user?.is_admin || user?.role === 'admin';
   const isEdit = !!id;
 
-  const [accountItems, setAccountItems] = useState([]);
   const [accountItemsForCompany, setAccountItemsForCompany] = useState([]);
-  const [projects, setProjects] = useState([]);
   const [projectsForCompany, setProjectsForCompany] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [userCards, setUserCards] = useState([]);
@@ -54,15 +52,13 @@ export default function ExpenseNew() {
       setLoadingMasters(true);
       await nextTick();
       try {
-        const [items, projs, comps] = await Promise.all([
-          api.getAccountItems(),
-          api.getProjects(),
-          api.getCompanies({ list: 1, mine: 1 }).catch(() => []),
-        ]);
+        const comps = await api.getCompanies({ list: 1, mine: 1 }).catch(() => []);
         if (!cancelled) {
-          setAccountItems(items);
-          setProjects(projs);
           setCompanies(Array.isArray(comps) ? comps : []);
+          if (!isEdit && isAdmin && Array.isArray(comps) && comps.length > 0 && !form.company_id) {
+            const def = comps.find(c => c.is_default) || comps[0];
+            if (def) setForm(f => ({ ...f, company_id: String(def.id), company_name: def.name || '' }));
+          }
         }
       } catch (e) {
         console.error(e);
@@ -95,11 +91,6 @@ export default function ExpenseNew() {
           if (isAdmin && comp?.company_id) {
             setForm(f => ({ ...f, company_id: String(comp.company_id), company_name: comp.company_name || '' }));
           }
-          if (!isEdit && settingsRes?.default_project_id && comp?.company_id) {
-            const projList = await api.getProjects(comp.company_id);
-            const p = projList?.find(x => x.id === settingsRes.default_project_id);
-            if (p) setForm(f => ({ ...f, project_id: p.id, project_name: p.name }));
-          }
           if (!isEdit && cardsRes?.length) {
             const defaultCard = cardsRes.find(c => c.is_default) || cardsRes[0];
             if (defaultCard) setForm(f => ({ ...f, card_no: defaultCard.card_no }));
@@ -116,22 +107,33 @@ export default function ExpenseNew() {
 
   useEffect(() => {
     const cid = effectiveCompany?.company_id;
+    const userName = form.user_name?.trim();
     if (!cid) {
-      setProjectsForCompany(projects);
-      setAccountItemsForCompany(accountItems);
+      setProjectsForCompany([]);
+      setAccountItemsForCompany([]);
       return;
     }
+    let cancelled = false;
     Promise.all([
       api.getProjects(parseInt(cid, 10)),
       api.getAccountItems(parseInt(cid, 10)),
-    ]).then(([p, a]) => {
+      userName ? api.getUserSettings(userName).catch(() => null) : Promise.resolve(null),
+    ]).then(([p, a, settingsRes]) => {
+      if (cancelled) return;
       setProjectsForCompany(Array.isArray(p) ? p : []);
       setAccountItemsForCompany(Array.isArray(a) ? a : []);
+      if (!isEdit && settingsRes?.default_project_id && Array.isArray(p)) {
+        const defProj = p.find(x => x.id === settingsRes.default_project_id);
+        if (defProj) setForm(f => ({ ...f, project_id: defProj.id, project_name: defProj.name }));
+      }
     }).catch(() => {
-      setProjectsForCompany([]);
-      setAccountItemsForCompany([]);
+      if (!cancelled) {
+        setProjectsForCompany([]);
+        setAccountItemsForCompany([]);
+      }
     });
-  }, [effectiveCompany?.company_id, projects, accountItems]);
+    return () => { cancelled = true; };
+  }, [effectiveCompany?.company_id, form.user_name, isEdit]);
 
   useEffect(() => {
     if (isEdit && id) {
@@ -238,7 +240,7 @@ export default function ExpenseNew() {
       next[idx] = { ...next[idx], [field]: value };
       if (field === 'account_item_id') {
         next[idx].mismatchWarning = null;
-        const list = effectiveCompany?.company_id ? accountItemsForCompany : accountItems;
+        const list = accountItemsForCompany;
         const ai = list.find(a => a.id === parseInt(value, 10));
         if (ai) next[idx].account_item_name = ai.name;
       }
@@ -258,7 +260,7 @@ export default function ExpenseNew() {
 
   const setProject = (e) => {
     const v = e.target.value;
-    const projList = effectiveCompany?.company_id ? projectsForCompany : projects;
+    const projList = projectsForCompany;
     const p = projList.find(x => x.id === parseInt(v, 10) || x.name === v);
     setForm(f => ({ ...f, project_id: p?.id || '', project_name: p?.name || v }));
   };
@@ -356,7 +358,7 @@ export default function ExpenseNew() {
             <label>현장(공사)</label>
             <select value={form.project_id || form.project_name} onChange={setProject}>
               <option value="">선택</option>
-              {(effectiveCompany?.company_id ? projectsForCompany : projects).map(p => (
+              {projectsForCompany.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -430,7 +432,7 @@ export default function ExpenseNew() {
                         className={!row.account_item_id ? 'required' : ''}
                       >
                         <option value="">선택</option>
-                        {(effectiveCompany?.company_id ? accountItemsForCompany : accountItems).map(a => (
+                        {accountItemsForCompany.map(a => (
                           <option key={a.id} value={a.id}>{a.name}</option>
                         ))}
                       </select>

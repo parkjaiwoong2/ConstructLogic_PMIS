@@ -928,14 +928,13 @@ app.put('/api/account-items/:id', async (req, res) => {
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   if (!name?.trim()) return res.status(400).json({ error: '항목명 필수' });
   try {
-    const row = await db.queryOne('SELECT company_id FROM account_items WHERE id = $1', [id]);
+    const row = await db.queryOne('SELECT company_id, code FROM account_items WHERE id = $1', [id]);
     if (!row) return res.status(404).json({ error: '항목을 찾을 수 없습니다.' });
     if (row.company_id != null) {
       const belongs = await userBelongsToCompany(req.user.id, row.company_id);
       if (!belongs) return res.status(403).json({ error: '소속 회사의 항목만 수정할 수 있습니다.' });
     }
-    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('item');
-    await db.run('UPDATE account_items SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
+    await db.run('UPDATE account_items SET name=$1 WHERE id=$2', [name.trim(), id]);
     await db.run('UPDATE expense_items SET account_item_name=$1 WHERE account_item_id=$2', [name.trim(), id]);
     res.json({ id });
   } catch (e) {
@@ -950,14 +949,13 @@ app.put('/api/projects/:id', async (req, res) => {
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   if (!name?.trim()) return res.status(400).json({ error: '현장명 필수' });
   try {
-    const row = await db.queryOne('SELECT company_id FROM projects WHERE id = $1', [id]);
+    const row = await db.queryOne('SELECT company_id, code FROM projects WHERE id = $1', [id]);
     if (!row) return res.status(404).json({ error: '현장을 찾을 수 없습니다.' });
     if (row.company_id != null) {
       const belongs = await userBelongsToCompany(req.user.id, row.company_id);
       if (!belongs) return res.status(403).json({ error: '소속 회사의 현장만 수정할 수 있습니다.' });
     }
-    const code = nameToCodeFromName(name.trim()) || generateEnglishCode('prj');
-    await db.run('UPDATE projects SET code=$1, name=$2 WHERE id=$3', [code, name.trim(), id]);
+    await db.run('UPDATE projects SET name=$1 WHERE id=$2', [name.trim(), id]);
     await db.run('UPDATE expense_items SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
     await db.run('UPDATE expense_documents SET project_name=$1 WHERE project_id=$2', [name.trim(), id]);
     res.json({ id });
@@ -977,18 +975,9 @@ app.delete('/api/account-items/:id', async (req, res) => {
       const belongs = await userBelongsToCompany(req.user.id, row.company_id);
       if (!belongs) return res.status(403).json({ error: '소속 회사의 항목만 삭제할 수 있습니다.' });
     }
-    const itemCompanyId = row.company_id;
-    const usedInCompany = itemCompanyId != null
-      ? await db.queryOne(
-          'SELECT 1 FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id WHERE ei.account_item_id = $1 AND ed.company_id = $2 LIMIT 1',
-          [id, itemCompanyId]
-        )
-      : await db.queryOne(
-          'SELECT 1 FROM expense_items ei JOIN expense_documents ed ON ed.id = ei.document_id WHERE ei.account_item_id = $1 AND ed.company_id IS NULL LIMIT 1',
-          [id]
-        );
-    if (usedInCompany) {
-      return res.status(400).json({ error: '해당 회사에서 사용 중인 계정과목은 삭제할 수 없습니다.' });
+    const used = await db.queryOne('SELECT 1 FROM expense_items WHERE account_item_id = $1 LIMIT 1', [id]);
+    if (used) {
+      return res.status(400).json({ error: '사용 내역에 등록된 계정과목은 삭제할 수 없습니다.' });
     }
     const r = await db.run('DELETE FROM account_items WHERE id = $1', [id]);
     if (!r.rowCount) return res.status(404).json({ error: '항목을 찾을 수 없습니다.' });
@@ -1010,18 +999,10 @@ app.delete('/api/projects/:id', async (req, res) => {
       const belongs = await userBelongsToCompany(req.user.id, row.company_id);
       if (!belongs) return res.status(403).json({ error: '소속 회사의 현장만 삭제할 수 있습니다.' });
     }
-    const projectCompanyId = row.company_id;
-    const usedInCompany = projectCompanyId != null
-      ? await db.queryOne(
-          'SELECT 1 FROM expense_documents WHERE project_id = $1 AND company_id = $2 LIMIT 1',
-          [id, projectCompanyId]
-        )
-      : await db.queryOne(
-          'SELECT 1 FROM expense_documents ed WHERE project_id = $1 AND (ed.company_id IS NULL) LIMIT 1',
-          [id]
-        );
-    if (usedInCompany) {
-      return res.status(400).json({ error: '해당 회사에서 사용 중인 현장은 삭제할 수 없습니다.' });
+    const usedInDocs = await db.queryOne('SELECT 1 FROM expense_documents WHERE project_id = $1 LIMIT 1', [id]);
+    const usedInItems = await db.queryOne('SELECT 1 FROM expense_items WHERE project_id = $1 LIMIT 1', [id]);
+    if (usedInDocs || usedInItems) {
+      return res.status(400).json({ error: '사용 내역에 등록된 현장은 삭제할 수 없습니다.' });
     }
     const r = await db.run('DELETE FROM projects WHERE id = $1', [id]);
     if (!r.rowCount) return res.status(404).json({ error: '현장을 찾을 수 없습니다.' });
