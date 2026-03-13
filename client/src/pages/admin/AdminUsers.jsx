@@ -229,7 +229,10 @@ export default function AdminUsers() {
         <div className="admin-users-filters">
           <select
             value={filters.company_id}
-            onChange={e => setFilters(f => ({ ...f, company_id: e.target.value }))}
+            onChange={e => {
+              const v = e.target.value;
+              setFilters(f => ({ ...f, company_id: v, project_id: v ? f.project_id : '', role: v ? f.role : '' }));
+            }}
             aria-label="회사"
           >
             <option value="">회사 전체</option>

@@ -2034,14 +2034,12 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
     const filterCid = roleMenusCid;
 
     const usersParams = [...params, limitVal, offsetVal];
-    const projectsSql = filterCid
-      ? 'SELECT id, name FROM projects WHERE company_id = $1 OR company_id IS NULL ORDER BY name'
-      : 'SELECT id, name FROM projects ORDER BY name';
-    const projectsParams = filterCid ? [filterCid] : [];
-    const rolesSql = filterCid
-      ? 'SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id'
-      : 'SELECT id, code, label, display_order FROM roles ORDER BY display_order, id';
-    const rolesParams = filterCid ? [filterCid] : [];
+    const projectsQuery = filterCid
+      ? db.query('SELECT id, name FROM projects WHERE company_id = $1 OR company_id IS NULL ORDER BY name', [filterCid])
+      : Promise.resolve([]);
+    const rolesQuery = filterCid
+      ? db.query('SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id', [filterCid])
+      : Promise.resolve([]);
 
     const [usersRes, rolesData, menuRows, projectsData, companiesData] = await Promise.all([
       db.query(`
@@ -2061,11 +2059,11 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
         ORDER BY au.is_approved ASC, c.name, au.email
         LIMIT $${idx} OFFSET $${idx + 1}
       `, usersParams),
-      db.query(rolesSql, rolesParams),
+      rolesQuery,
       roleMenusCid
         ? db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [roleMenusCid])
         : db.query('SELECT role, menu_path FROM role_menus WHERE company_id = (SELECT id FROM companies WHERE is_default = true LIMIT 1) ORDER BY role, menu_path'),
-      db.query(projectsSql, projectsParams),
+      projectsQuery,
       getCompaniesForUser(req.user)
     ]);
     const total = usersRes.length ? parseInt(usersRes[0].total || 0, 10) : 0;
