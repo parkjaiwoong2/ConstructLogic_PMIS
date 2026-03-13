@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
 
   const canAccess = (path) => {
     if (!user) return false;
-    if (user.is_admin || user.role === 'admin') return true;
+    if (user.is_admin) return true;
     const norm = path === '/' ? '/' : path.replace(/\/$/, '') || '/';
     return menus.some(m => m === norm || m === path);
   };

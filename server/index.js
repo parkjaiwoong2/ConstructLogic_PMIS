@@ -107,7 +107,7 @@ app.get('/api/auth/me', async (req, res) => {
       menus = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/approval-sequence', '/admin/permissions', '/admin/edit-history', '/admin/super'];
     } else if (isCompanyAdmin) {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
-      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, 'company_admin']) : [];
+      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, user.role]) : [];
       menus = (rows || []).map(r => r.menu_path);
     } else {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
@@ -2055,6 +2055,15 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
       if (isNaN(cid)) return res.status(400).json({ error: '유효하지 않은 회사 ID' });
       params.push(cid);
       conditions.push(`uc.company_id = $${idx++}`);
+    } else {
+      // 회사 전체: 자신이 속한 회사만 조회
+      const myCompanyIds = await getCompanyIdsForUserIncludingSameEmail(req.user.id);
+      if (myCompanyIds.length === 0) {
+        conditions.push(`1 = 0`);
+      } else {
+        params.push(myCompanyIds);
+        conditions.push(`uc.company_id = ANY($${idx++}::int[])`);
+      }
     }
     if (project_id != null && project_id !== '') { params.push(parseInt(project_id, 10)); conditions.push(`au.project_id = $${idx++}`); }
     if (role != null && role !== '') { params.push(role.trim()); conditions.push(`au.role = $${idx++}`); }
