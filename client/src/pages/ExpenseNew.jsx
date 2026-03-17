@@ -17,7 +17,7 @@ export default function ExpenseNew() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin;
+  const isAdmin = user?.role === 'admin' || user?.is_admin;
   const isEdit = !!id;
 
   const [accountItemsForCompany, setAccountItemsForCompany] = useState([]);

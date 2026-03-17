@@ -29,7 +29,7 @@ function getDefaultPeriod() {
 
 export default function CardSettlement() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin' || user?.is_admin;
+  const isAdmin = user?.role === 'admin' || user?.is_admin;
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [sumCardAmount, setSumCardAmount] = useState(0);
@@ -156,7 +156,8 @@ export default function CardSettlement() {
 
   const handleBatchExcel = async () => {
     try {
-      const params = { output_mode: 'by_item', status: 'approved' };
+      // 카드정산 출력(결재)는 문서별 결재 양식(결재/작성/검토/검토/승인)으로 출력
+      const params = { status: 'approved' };
       if (filter.period_from) params.period_from = filter.period_from;
       if (filter.period_to) params.period_to = filter.period_to;
       if (filter.project) params.project = filter.project;

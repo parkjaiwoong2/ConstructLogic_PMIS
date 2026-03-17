@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function ProtectedRoute({ children, path, superOnly }) {
+export default function ProtectedRoute({ children, path, rootOnly }) {
   const { user, loading, canAccess, firstAccessiblePath, logout } = useAuth();
   const location = useLocation();
 
@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children, path, superOnly }) {
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
-  if (superOnly && user?.role !== 'superAdmin' && user?.is_admin !== true) {
+  if (rootOnly && String(user?.email || '').trim().toLowerCase() !== 'zangruri@gmail.com') {
     return <Navigate to={firstAccessiblePath ?? '/'} replace />;
   }
   if (path && !canAccess(path)) {

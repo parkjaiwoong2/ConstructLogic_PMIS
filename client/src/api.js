@@ -151,7 +151,12 @@ export const api = {
     return fetchJson(`${API}/admin/batch/approval-sequence${q}`);
   },
   updateApprovalSequences: (body) => fetchJson(`${API}/admin/approval-sequences`, { method: 'PUT', body: JSON.stringify(body) }),
-  getAdminBatchRolePermissions: (companyId) => fetchJson(`${API}/admin/batch/role-permissions${companyId ? '?company_id=' + companyId : ''}`),
+  getAdminBatchRolePermissions: (companyId, options = {}) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('company_id', companyId);
+    if (options?.allCompanies) params.set('all_companies', '1');
+    return fetchJson(`${API}/admin/batch/role-permissions${params.toString() ? '?' + params.toString() : ''}`);
+  },
   getAdminBatchUsersPage: (params) => {
     const q = params ? new URLSearchParams(params).toString() : '';
     return fetchJson(`${API}/admin/batch/users-page${q ? '?' + q : ''}`);

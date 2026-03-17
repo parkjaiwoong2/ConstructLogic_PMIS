@@ -22,8 +22,12 @@ const parseAuth = (req, res, next) => {
 };
 app.use(parseAuth);
 
-const isAdminUser = (u) => u && (u.role === 'admin' || u.role === 'superAdmin' || u.is_admin === true);
-const isSuperAdminUser = (u) => u && (u.role === 'superAdmin' || u.is_admin === true);
+const ROOT_ADMIN_EMAIL = 'zangruri@gmail.com';
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+const isRootAdminUser = (u) => normalizeEmail(u?.email) === ROOT_ADMIN_EMAIL;
+const normalizeRole = (role) => (role === 'superAdmin' ? 'admin' : role);
+const isAdminUser = (u) => u && (normalizeRole(u.role) === 'admin' || u.is_admin === true);
+const isSuperAdminUser = isRootAdminUser;
 
 // ========== 인증/회사 API (로그인 전 접근) ==========
 
@@ -35,9 +39,11 @@ app.post('/api/auth/login', async (req, res) => {
     if (!user || !(await auth.verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' });
     }
-    if (!user.is_admin && user.role !== 'superAdmin' && !user.is_approved) {
+    if (!isAdminUser(user) && !user.is_approved) {
       return res.status(403).json({ error: '가입 승인 대기 중입니다. 관리자 승인 후 로그인할 수 있습니다.' });
     }
+    user.role = normalizeRole(user.role);
+    user.is_admin = isRootAdminUser(user);
     const token = auth.signToken(user);
     const { password_hash, ...u } = user;
     res.json({ token, user: u });
@@ -103,20 +109,20 @@ app.get('/api/auth/me', async (req, res) => {
       ? await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies WHERE id = $1', [repCompanyId])
       : await db.queryOne('SELECT id, name, logo_url, address, ceo_name, founded_date, business_reg_no, tel, fax, email, copyright_text FROM companies ORDER BY id LIMIT 1');
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
-    const isSuperAdmin = isSuperAdminUser(user);
-    const isCompanyAdmin = user.role === 'admin' && !user.is_admin;
+    const normalizedRole = normalizeRole(user.role);
+    const isRootAdmin = isRootAdminUser(user);
+    const isCompanyAdmin = normalizedRole === 'admin';
     let menus;
-    if (isSuperAdmin) {
-      menus = ['/', '/expense/new', '/expenses', '/import', '/approval-processing', '/card-management', '/masters', '/settings', '/admin/company', '/admin/approval-sequence', '/admin/permissions', '/admin/edit-history', '/admin/super'];
-    } else if (isCompanyAdmin) {
+    if (isCompanyAdmin) {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
       const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, 'company_admin']) : [];
       menus = (rows || []).map(r => (r.menu_path || '').trim()).filter(Boolean);
     } else {
       const companyId = repCompanyId || (await db.queryOne('SELECT id FROM companies ORDER BY id LIMIT 1'))?.id;
-      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, user.role]) : [];
+      const rows = companyId ? await db.query('SELECT menu_path FROM role_menus WHERE company_id = $1 AND role = $2', [companyId, normalizedRole]) : [];
       menus = (rows || []).map(r => (r.menu_path || '').trim()).filter(Boolean);
     }
+    if (isRootAdmin && !menus.includes('/admin/super')) menus.push('/admin/super');
     const company = companyRow ? { ...COMPANY_DEFAULTS, ...companyRow } : COMPANY_DEFAULTS;
     let subscription = null;
     if (repCompanyId) {
@@ -131,7 +137,7 @@ app.get('/api/auth/me', async (req, res) => {
         subscription = { plan: subRow.code, planName: subRow.name, maxUsers: subRow.max_users, status: subRow.status, startedAt: subRow.started_at, endsAt: subRow.ends_at, isTrial: subRow.is_trial, trialDays: subRow.trial_days };
       }
     }
-    const userOut = { ...user, is_admin: isSuperAdminUser(user) };
+    const userOut = { ...user, role: normalizedRole, is_admin: isRootAdmin };
     res.json({ user: userOut, menus: [...new Set(menus)], company, subscription });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1505,7 +1511,7 @@ app.put('/api/user-settings', async (req, res) => {
   }
 });
 
-const adminCache = new Map(); // userId -> { isAdmin, cachedAt }
+const adminCache = new Map(); // userId -> { isAdmin, role, email, cachedAt }
 const ADMIN_CACHE_TTL_MS = 60 * 1000;
 
 /** 동일 이메일의 모든 auth_users 소속 회사 ID 조회 (이메일 회사별 허용 시 1인 다회사 지원) */
@@ -1612,14 +1618,18 @@ const requireAdmin = async (req, res, next) => {
   if (cached && Date.now() - cached.cachedAt < ADMIN_CACHE_TTL_MS) {
     req.user.is_admin = cached.isAdmin;
     req.user.role = cached.role;
+    req.user.email = cached.email;
     return next();
   }
   try {
-    const user = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
+    const user = await db.queryOne('SELECT email, is_admin, role FROM auth_users WHERE id = $1', [req.user.id]);
     if (isAdminUser(user)) {
-      adminCache.set(req.user.id, { isAdmin: isSuperAdminUser(user), role: user.role, cachedAt: Date.now() });
-      req.user.is_admin = isSuperAdminUser(user);
-      req.user.role = user.role;
+      const normalizedRole = normalizeRole(user.role);
+      const isRootAdmin = isRootAdminUser(user);
+      adminCache.set(req.user.id, { isAdmin: isRootAdmin, role: normalizedRole, email: user.email, cachedAt: Date.now() });
+      req.user.is_admin = isRootAdmin;
+      req.user.role = normalizedRole;
+      req.user.email = user.email;
       return next();
     }
   } catch (e) { /* 무시 */ }
@@ -1736,7 +1746,7 @@ app.get('/api/admin/companies', requireAdmin, async (req, res) => {
   }
 });
 
-/** 슈퍼관리자 전용: 회사 + 관리자 사용자 일괄 등록 */
+/** 관리자관리 전용: 회사 + 관리자 사용자 일괄 등록 */
 app.post('/api/admin/super/company-with-admin', requireAdmin, async (req, res) => {
   if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
   const { name: companyName, email, userName, password } = req.body;
@@ -1802,7 +1812,7 @@ app.post('/api/admin/super/company-with-admin', requireAdmin, async (req, res) =
   }
 });
 
-/** 슈퍼관리자 전용: 회사 목록 (페이징, 전체 필드, 조회조건) */
+/** 관리자관리 전용: 회사 목록 (페이징, 전체 필드, 조회조건) */
 app.get('/api/admin/super/companies-page', requireAdmin, async (req, res) => {
   if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: '슈퍼관리자만 가능합니다.' });
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
@@ -1993,7 +2003,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
     const offsetVal = offset != null ? Math.max(0, parseInt(offset, 10)) : 0;
 
     const rowsRes = await db.query(`
-      SELECT au.id, au.email, au.name, au.role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
+      SELECT au.id, au.email, au.name, CASE WHEN au.role = 'superAdmin' THEN 'admin' ELSE au.role END as role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
              p.name as project_name,
              COUNT(*) OVER ()::int as total
       FROM auth_users au
@@ -2024,7 +2034,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
       const hasAuc = await db.queryOne('SELECT 1 FROM auth_user_companies WHERE user_id = $1 AND company_id = $2', [existing.id, cid]);
       if (hasMain || hasAuc) return res.status(400).json({ error: '해당 회사에 이미 등록된 이메일입니다.' });
       await db.run('INSERT INTO auth_user_companies (user_id, company_id) VALUES ($1, $2) ON CONFLICT (user_id, company_id) DO NOTHING', [existing.id, cid]);
-      const row = await db.queryOne('SELECT au.id, au.email, au.name, au.role FROM auth_users au WHERE au.id = $1', [existing.id]);
+      const row = await db.queryOne("SELECT au.id, au.email, au.name, CASE WHEN au.role = 'superAdmin' THEN 'admin' ELSE au.role END as role FROM auth_users au WHERE au.id = $1", [existing.id]);
       return res.json(row);
     }
     if (!password) return res.status(400).json({ error: '신규 등록 시 비밀번호 필수' });
@@ -2072,7 +2082,7 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
     }
     params.push(id);
     await db.run(`UPDATE auth_users SET ${updates.join(', ')} WHERE id = $${idx}`, params);
-    const row = await db.queryOne('SELECT au.id, au.email, au.name, au.role, au.is_admin, au.is_approved, au.company_id, au.project_id, p.name as project_name FROM auth_users au LEFT JOIN projects p ON p.id = au.project_id WHERE au.id = $1', [id]);
+    const row = await db.queryOne("SELECT au.id, au.email, au.name, CASE WHEN au.role = 'superAdmin' THEN 'admin' ELSE au.role END as role, au.is_admin, au.is_approved, au.company_id, au.project_id, p.name as project_name FROM auth_users au LEFT JOIN projects p ON p.id = au.project_id WHERE au.id = $1", [id]);
     if (!row) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
     res.json(row);
   } catch (e) {
@@ -2085,7 +2095,7 @@ app.post('/api/admin/users/:id/approve', requireAdmin, async (req, res) => {
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID 필수' });
   try {
     await db.run('UPDATE auth_users SET is_approved = true WHERE id = $1', [id]);
-    const row = await db.queryOne('SELECT id, email, name, role, is_approved FROM auth_users WHERE id = $1', [id]);
+    const row = await db.queryOne("SELECT id, email, name, CASE WHEN role = 'superAdmin' THEN 'admin' ELSE role END as role, is_approved FROM auth_users WHERE id = $1", [id]);
     if (!row) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
     res.json(row);
   } catch (e) {
@@ -2129,7 +2139,7 @@ app.put('/api/admin/role-menus', requireAdmin, async (req, res) => {
   const cid = company_id != null && !isNaN(parseInt(company_id, 10)) ? parseInt(company_id, 10) : null;
   if (!cid) return res.status(400).json({ error: '회사 선택 필수' });
   if (role === 'company_admin') {
-    const u = await db.queryOne('SELECT is_admin, role FROM auth_users WHERE id = $1', [req.user?.id]);
+    const u = await db.queryOne('SELECT email, is_admin, role FROM auth_users WHERE id = $1', [req.user?.id]);
     if (!isSuperAdminUser(u)) return res.status(403).json({ error: '회사별 관리자 메뉴는 슈퍼관리자만 수정할 수 있습니다.' });
   }
   try {
@@ -2188,15 +2198,19 @@ app.get('/api/admin/batch/role-permissions', requireAdmin, async (req, res) => {
   try {
     const cid = req.query.company_id != null && req.query.company_id !== '' && !isNaN(parseInt(req.query.company_id, 10))
       ? parseInt(req.query.company_id, 10) : null;
+    const allCompanies = req.query.all_companies === '1' || req.query.all_companies === 'true';
     // 역할은 회사별 조회 (회사 선택 시에만)
     const rolesSql = cid
       ? 'SELECT id, code, label, display_order FROM roles WHERE company_id = $1 ORDER BY display_order, id'
       : 'SELECT id, code, label, display_order FROM roles WHERE 1=0';
     const rolesParams = cid ? [cid] : [];
+    const companiesPromise = (allCompanies && isSuperAdminUser(req.user))
+      ? db.query('SELECT id, name, is_default FROM companies ORDER BY is_default DESC, id')
+      : getCompaniesForUserMineStrict(req.user);
     const [rolesData, menuRows, companiesData] = await Promise.all([
       db.query(rolesSql, rolesParams),
       cid ? db.query('SELECT role, menu_path FROM role_menus WHERE company_id = $1 ORDER BY role, menu_path', [cid]) : [],
-      getCompaniesForUserMineStrict(req.user)
+      companiesPromise
     ]);
     const byRole = {};
     (menuRows || []).forEach(r => {
@@ -2259,7 +2273,7 @@ app.get('/api/admin/batch/users-page', requireAdmin, async (req, res) => {
           UNION
           SELECT id as user_id, company_id FROM auth_users WHERE company_id IS NOT NULL
         )
-        SELECT au.id, au.email, au.name, au.role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
+        SELECT au.id, au.email, au.name, CASE WHEN au.role = 'superAdmin' THEN 'admin' ELSE au.role END as role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
                p.name as project_name, uc.company_id as row_company_id, c.name as row_company_name,
                COUNT(*) OVER ()::int as total
         FROM auth_users au
@@ -2330,7 +2344,7 @@ app.get('/api/admin/super/batch/users-page', requireAdmin, async (req, res) => {
           UNION
           SELECT id as user_id, company_id FROM auth_users WHERE company_id IS NOT NULL
         )
-        SELECT au.id, au.email, au.name, au.role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
+        SELECT au.id, au.email, au.name, CASE WHEN au.role = 'superAdmin' THEN 'admin' ELSE au.role END as role, au.is_admin, au.is_approved, au.company_id, au.project_id, au.created_at,
                p.name as project_name, uc.company_id as row_company_id, c.name as row_company_name,
                COUNT(*) OVER ()::int as total
         FROM auth_users au
@@ -2344,7 +2358,7 @@ app.get('/api/admin/super/batch/users-page', requireAdmin, async (req, res) => {
       rolesQuery,
       menuQuery,
       projectsQuery,
-      getCompaniesForUser({ id: req.user.id, is_admin: true })
+      getCompaniesForUser(req.user)
     ]);
     const total = usersRes.length ? parseInt(usersRes[0].total || 0, 10) : 0;
     const rows = usersRes.map(({ total: _, ...r }) => r);
@@ -2533,10 +2547,10 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       const docIdsRows = await db.query(`SELECT ed.id ${fromDoc}${docWhereClause} ORDER BY ed.period_start DESC, ed.id DESC`, docParams);
       const docIds = (docIdsRows || []).map(r => r.id).filter(Boolean);
       if (docIds.length > 0) {
-        const ph = docIds.map((_, i) => `$${docParams.length + 1 + i}`).join(',');
+        const ph = docIds.map((_, i) => `$${i + 1}`).join(',');
         items = await db.query(
           `SELECT ${selectCols} ${fromClause} WHERE ed.id IN (${ph}) ORDER BY ei.use_date, ei.id`,
-          [...docParams, ...docIds]
+          docIds
         );
       }
     } else {
@@ -2849,7 +2863,6 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
     const filename = (fnFrom && fnTo) ? `카드및현금사용-${fnFrom}~${fnTo}.xlsx` : '카드및현금사용.xlsx';
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('X-Output-Mode', mode);
     res.send(Buffer.from(buf));
   } catch (e) {
     res.status(500).json({ error: e.message });
