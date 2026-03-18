@@ -2716,12 +2716,12 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       [2, 3, 4, 5].forEach(r => { ws.getRow(r).height = 26; });
 
       ws.getCell('A4').value = '카드번호';
+      ws.mergeCells('B4:C4');
       ws.getCell('B4').value = cardVal;
-      ws.getCell('C4').value = '';
       ws.getCell('D4').value = '개인용도';
       ws.getCell('A5').value = '사용자';
+      ws.mergeCells('B5:C5');
       ws.getCell('B5').value = userVal;
-      ws.getCell('C5').value = '';
       ws.getCell('D5').value = '공적용도';
       ws.getCell('E5').value = totalVal;
       if (typeof totalVal === 'number') ws.getCell('E5').numFmt = '#,##0';
