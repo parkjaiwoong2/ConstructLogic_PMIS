@@ -2672,6 +2672,16 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       }
       usedNames.add(safeTabName);
       const ws = wb.addWorksheet(safeTabName, { views: [{ showGridLines: true }] });
+      ws.pageSetup = {
+        paperSize: 9, // A4
+        orientation: 'landscape',
+        scale: 70,
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        horizontalCentered: true,
+        margins: { left: 0.15, right: 0.15, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 },
+      };
       ws.columns = [
         { width: 12 }, { width: 18 }, { width: 14 }, { width: 28 },
         { width: 12 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 8 },
@@ -2778,6 +2788,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell(submitterRow + 4, 1).value = `제출자: ${submitterName || ''}(인)`;
       ws.getCell(submitterRow + 4, 1).alignment = { horizontal: 'center' };
       applyGridBorders(ws, submitterRow + 4, 1, submitterRow + 4, 9);
+      ws.pageSetup.printArea = `A1:I${submitterRow + 4}`;
     };
 
     const wb = new ExcelJS.Workbook();
