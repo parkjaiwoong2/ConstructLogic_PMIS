@@ -12,6 +12,13 @@ function formatCurrency(n) {
   return new Intl.NumberFormat('ko-KR').format(n || 0);
 }
 
+function toLocalDateString(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function maskCard(c) {
   if (!c) return '-';
   const s = String(c);
@@ -21,10 +28,18 @@ function maskCard(c) {
 
 function getDefaultPeriod() {
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const period_from = prev.toISOString().slice(0, 10);
-  return { period_from, period_to: today };
+  const day = now.getDay(); // 0: Sun, 1: Mon, ... 6: Sat
+  const thisWeekMondayOffset = day === 0 ? -6 : 1 - day;
+  const thisWeekMonday = new Date(now);
+  thisWeekMonday.setHours(0, 0, 0, 0);
+  thisWeekMonday.setDate(now.getDate() + thisWeekMondayOffset);
+  const prevWeekMonday = new Date(thisWeekMonday);
+  prevWeekMonday.setDate(thisWeekMonday.getDate() - 7);
+  const prevWeekSunday = new Date(prevWeekMonday);
+  prevWeekSunday.setDate(prevWeekMonday.getDate() + 6);
+  const period_from = toLocalDateString(prevWeekMonday);
+  const period_to = toLocalDateString(prevWeekSunday);
+  return { period_from, period_to };
 }
 
 export default function CardSettlement() {

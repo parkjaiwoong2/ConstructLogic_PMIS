@@ -2647,7 +2647,9 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       return m ? `${m[1].slice(2)}.${m[2]}.${m[3]}` : dStr;
     };
     const dates = items.map(i => i.use_date).filter(Boolean).sort();
-    const periodLabel = dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]}` : '';
+    const periodLabel = (period_from && period_to)
+      ? `${period_from} ~ ${period_to}`
+      : (dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]}` : '');
     const periodEndForSubmit = dates.length ? dates[dates.length - 1] : (period_to || '');
     const fromDate = period_from || (dates.length ? dates[0] : '');
     const toDate = period_to || (dates.length ? dates[dates.length - 1] : '');
@@ -2663,6 +2665,8 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
     };
 
     const usedNames = new Set();
+    const calcTextLen = (v) => String(v || '').replace(/[^\x00-\xff]/g, 'aa').length;
+    const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
     const addSheet = (wb, sheetItems, tabName, cardNoForHeader, userProjectForHeader, totalCardForHeader, submitterName) => {
       let safeTabName = tabName.replace(/[\\/:*?"<>|]/g, '-').slice(0, 31);
       let n = 1;
@@ -2674,18 +2678,28 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       const ws = wb.addWorksheet(safeTabName, { views: [{ showGridLines: true }] });
       ws.pageSetup = {
         paperSize: 9, // A4
-        orientation: 'landscape',
-        scale: 70,
+        orientation: 'portrait',
         fitToPage: true,
         fitToWidth: 1,
         fitToHeight: 0,
         horizontalCentered: true,
         margins: { left: 0.15, right: 0.15, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 },
       };
+      const maxProjectLen = sheetItems.reduce((m, i) => Math.max(m, calcTextLen(i.project_name)), 8);
+      const maxItemLen = sheetItems.reduce((m, i) => Math.max(m, calcTextLen(i.account_item_name)), 8);
+      const maxDescLen = sheetItems.reduce((m, i) => Math.max(m, calcTextLen(i.description)), 12);
+      const colProject = clamp(Math.ceil(maxProjectLen * 0.65), 11, 17);
+      const colItem = clamp(Math.ceil(maxItemLen * 0.65), 10, 15);
+      const colDesc = clamp(Math.ceil(maxDescLen * 0.45), 14, 24);
+      const approvalColWidth = 10;
       ws.columns = [
-        { width: 12 }, { width: 18 }, { width: 14 }, { width: 28 },
-        { width: 12 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 8 },
+        { width: 10 }, { width: colProject }, { width: colItem }, { width: colDesc },
+        { width: 11 }, { width: approvalColWidth }, { width: approvalColWidth }, { width: approvalColWidth }, { width: approvalColWidth },
       ];
+      ws.getColumn(2).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getColumn(3).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getColumn(4).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+      ws.getColumn(8).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
 
       const cardVal = cardNoForHeader != null ? (isDisplayCardFormat(cardNoForHeader) ? maskCard(cardNoForHeader) : cardNoForHeader) : '';
       const userVal = userProjectForHeader || '';
@@ -2743,7 +2757,10 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell(headerRow, 9).value = '확인';
       for (let c = 1; c <= 9; c++) {
         ws.getCell(headerRow, c).alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getCell(headerRow, c).font = { size: 10 };
       }
+      ws.getCell(headerRow, 4).font = { size: 9 };
+      [5, 6, 7].forEach(c => { ws.getCell(headerRow, c).font = { size: 11 }; });
 
       let dataStartRow = 8;
       let totalCardAmt = 0, totalCashAmt = 0, totalAmt = 0;
@@ -2758,6 +2775,13 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
         ws.getCell(r, 7).value = i.total_amount ?? 0;
         ws.getCell(r, 8).value = i.remark || '';
         ws.getCell(r, 9).value = '';
+        for (let c = 1; c <= 9; c++) ws.getCell(r, c).font = { size: 10 };
+        ws.getCell(r, 4).font = { size: 9 };
+        [5, 6, 7].forEach(c => { ws.getCell(r, c).font = { size: 11 }; });
+        // 세부사용내역이 길면 2행 높이로 확장해 인쇄 시 잘리지 않도록 처리
+        const descLen = calcTextLen(i.description || '');
+        const twoLineThreshold = Math.max(12, Math.floor(colDesc * 1.8));
+        ws.getRow(r).height = descLen > twoLineThreshold ? 42 : 21;
         totalCardAmt += i.card_amount ?? 0;
         totalCashAmt += i.cash_amount ?? 0;
         totalAmt += i.total_amount ?? 0;
@@ -2776,6 +2800,9 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
         ws.getCell(totalRow, 6).value = totalCashAmt;
         ws.getCell(totalRow, 7).value = totalAmt;
         [5, 6, 7].forEach(col => { ws.getCell(totalRow, col).numFmt = '#,##0'; });
+        for (let c = 1; c <= 9; c++) ws.getCell(totalRow, c).font = { size: 10 };
+        ws.getCell(totalRow, 4).font = { size: 9 };
+        [5, 6, 7].forEach(c => { ws.getCell(totalRow, c).font = { size: 11 }; });
         applyGridBorders(ws, totalRow, 1, totalRow, 9);
         tableEndRow = totalRow;
       }
