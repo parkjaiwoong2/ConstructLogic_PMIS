@@ -2393,16 +2393,22 @@ app.get('/api/admin/edit-history', requireAdmin, async (req, res) => {
   try {
     let joinClause = 'FROM admin_edit_history aeh JOIN expense_documents ed ON ed.id = aeh.document_id';
     const params = [];
+    const conditions = [];
+    // 로그인한 관리자 본인이 수정한 히스토리만 조회
+    params.push(req.user.id);
+    conditions.push(`aeh.admin_user_id = $${params.length}`);
     if (company_id != null && company_id !== '' && !isNaN(parseInt(company_id, 10))) {
       params.push(parseInt(company_id, 10));
-      joinClause += ` JOIN auth_users au ON au.name = ed.user_name AND (au.company_id = $1 OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $1))`;
+      joinClause += ` JOIN auth_users au ON au.name = ed.user_name AND (au.company_id = $${params.length} OR EXISTS (SELECT 1 FROM auth_user_companies auc WHERE auc.user_id = au.id AND auc.company_id = $${params.length}))`;
     }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(lim, off);
     const rowsRes = await db.query(`
       SELECT aeh.id, aeh.document_id, aeh.admin_name, aeh.document_status, aeh.created_at,
              ed.doc_no, ed.user_name, ed.project_name, ed.period_start, ed.period_end,
              COUNT(*) OVER ()::int as total
       ${joinClause}
+      ${whereClause}
       ORDER BY aeh.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `, params);
