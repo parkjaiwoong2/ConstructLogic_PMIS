@@ -2726,6 +2726,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell('E5').value = totalVal;
       if (typeof totalVal === 'number') ws.getCell('E5').numFmt = '#,##0';
       ws.mergeCells('H4:I4');
+      ws.mergeCells('H5:I5');
       ws.getCell('H4').value = '비고';
       ws.getCell('H4').alignment = { horizontal: 'center', vertical: 'middle' };
       applyGridBorders(ws, 4, 1, 5, 9);
@@ -2740,6 +2741,9 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell(headerRow, 7).value = '합계금액';
       ws.getCell(headerRow, 8).value = '비고';
       ws.getCell(headerRow, 9).value = '확인';
+      for (let c = 1; c <= 9; c++) {
+        ws.getCell(headerRow, c).alignment = { horizontal: 'center', vertical: 'middle' };
+      }
 
       let dataStartRow = 8;
       let totalCardAmt = 0, totalCashAmt = 0, totalAmt = 0;
