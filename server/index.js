@@ -2774,20 +2774,29 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       applyGridBorders(ws, headerRow, 1, dataEndRow, 9);
 
       const submitterRow = dataEndRow + 3;
+      // 하단 제출 문구 영역은 캡처 양식처럼 무테 + 가운데 정렬로 고정
+      for (let r = submitterRow; r <= submitterRow + 4; r++) {
+        for (let c = 1; c <= 9; c++) {
+          ws.getCell(r, c).border = {};
+        }
+      }
       ws.mergeCells(submitterRow, 1, submitterRow, 9);
       ws.getCell(submitterRow, 1).value = '상기와 같이 카드사용내역을 제출하오니 검토후 승인하여 주시기 바랍니다.';
-      ws.getCell(submitterRow, 1).alignment = { horizontal: 'center' };
-      applyGridBorders(ws, submitterRow, 1, submitterRow, 9);
+      ws.getCell(submitterRow, 1).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getCell(submitterRow, 1).font = { size: 12 };
+      ws.getRow(submitterRow).height = 24;
 
       ws.mergeCells(submitterRow + 2, 1, submitterRow + 2, 9);
-      ws.getCell(submitterRow + 2, 1).value = formatDateKor(periodEndForSubmit);
-      ws.getCell(submitterRow + 2, 1).alignment = { horizontal: 'center' };
-      applyGridBorders(ws, submitterRow + 2, 1, submitterRow + 2, 9);
+      ws.getCell(submitterRow + 2, 1).value = formatDateKor(periodEndForSubmit).replace('월 ', '월');
+      ws.getCell(submitterRow + 2, 1).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getCell(submitterRow + 2, 1).font = { size: 12 };
+      ws.getRow(submitterRow + 2).height = 22;
 
       ws.mergeCells(submitterRow + 4, 1, submitterRow + 4, 9);
       ws.getCell(submitterRow + 4, 1).value = `제출자: ${submitterName || ''}(인)`;
-      ws.getCell(submitterRow + 4, 1).alignment = { horizontal: 'center' };
-      applyGridBorders(ws, submitterRow + 4, 1, submitterRow + 4, 9);
+      ws.getCell(submitterRow + 4, 1).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getCell(submitterRow + 4, 1).font = { size: 12 };
+      ws.getRow(submitterRow + 4).height = 24;
       ws.pageSetup.printArea = `A1:I${submitterRow + 4}`;
     };
 
