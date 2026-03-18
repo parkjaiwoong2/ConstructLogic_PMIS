@@ -2691,15 +2691,13 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       const colProject = clamp(Math.ceil(maxProjectLen * 0.65), 11, 17);
       const colItem = clamp(Math.ceil(maxItemLen * 0.65), 10, 15);
       const colDesc = clamp(Math.ceil(maxDescLen * 0.45), 14, 24);
-      const approvalColWidth = 10;
+      const colRemark = clamp(Math.ceil(sheetItems.reduce((m, i) => Math.max(m, calcTextLen(i.remark)), 8) * 0.55), 10, 16);
+      const approvalColWidth = 8.5;
       ws.columns = [
         { width: 10 }, { width: colProject }, { width: colItem }, { width: colDesc },
-        { width: 11 }, { width: approvalColWidth }, { width: approvalColWidth }, { width: approvalColWidth }, { width: approvalColWidth },
+        { width: 11 }, { width: 11 }, { width: 12 }, { width: colRemark }, { width: 7 }, { width: 2 },
+        { width: approvalColWidth }, { width: approvalColWidth }, { width: approvalColWidth }, { width: approvalColWidth }, { width: approvalColWidth },
       ];
-      ws.getColumn(2).alignment = { horizontal: 'center', vertical: 'middle' };
-      ws.getColumn(3).alignment = { horizontal: 'center', vertical: 'middle' };
-      ws.getColumn(4).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-      ws.getColumn(8).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
 
       const cardVal = cardNoForHeader != null ? (isDisplayCardFormat(cardNoForHeader) ? maskCard(cardNoForHeader) : cardNoForHeader) : '';
       const userVal = userProjectForHeader || '';
@@ -2711,31 +2709,35 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell('A1').font = { bold: true, size: 12 };
       ws.getCell('A1').border = fullBorder;
 
-      ws.mergeCells('E1:E2');
-      ws.getCell('E1').value = '결재';
-      ws.getCell('E1').alignment = { horizontal: 'center', vertical: 'middle' };
-      ws.getCell('F1').value = '작성';
-      ws.getCell('G1').value = '검토';
-      ws.getCell('H1').value = '검토';
-      ws.getCell('I1').value = '승인';
-      [5, 6, 7, 8, 9].forEach(c => { ws.getCell(1, c).alignment = { horizontal: 'center', vertical: 'middle' }; });
-      applyGridBorders(ws, 1, 5, 5, 9);
-      [5, 6, 7, 8, 9].forEach(c => {
+      // 결재란은 데이터 표와 분리된 독립 박스로 구성 (K~O)
+      ws.mergeCells('K1:K2');
+      ws.getCell('K1').value = '결재';
+      ws.getCell('K1').alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getCell('L1').value = '작성';
+      ws.getCell('M1').value = '검토';
+      ws.getCell('N1').value = '검토';
+      ws.getCell('O1').value = '승인';
+      [11, 12, 13, 14, 15].forEach(c => { ws.getCell(1, c).alignment = { horizontal: 'center', vertical: 'middle' }; });
+      applyGridBorders(ws, 1, 11, 5, 15);
+      [11, 12, 13, 14, 15].forEach(c => {
         const cell = ws.getCell(3, c);
         cell.border = { top: thinBorder, bottom: thinBorder };
       });
       ws.mergeCells('E4:F4');
       ws.mergeCells('E5:F5');
       ws.getCell('E4').value = '-';
-      [2, 3, 4, 5].forEach(r => { ws.getRow(r).height = 26; });
+      ws.getRow(1).height = 28;
+      [2, 3, 4, 5].forEach(r => { ws.getRow(r).height = 34; });
 
       ws.getCell('A4').value = '카드번호';
       ws.mergeCells('B4:C4');
       ws.getCell('B4').value = cardVal;
+      ws.getCell('B4').alignment = { horizontal: 'center', vertical: 'middle' };
       ws.getCell('D4').value = '개인용도';
       ws.getCell('A5').value = '사용자';
       ws.mergeCells('B5:C5');
       ws.getCell('B5').value = userVal;
+      ws.getCell('B5').alignment = { horizontal: 'center', vertical: 'middle' };
       ws.getCell('D5').value = '공적용도';
       ws.getCell('E5').value = totalVal;
       if (typeof totalVal === 'number') ws.getCell('E5').numFmt = '#,##0';
@@ -2775,6 +2777,15 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
         ws.getCell(r, 7).value = i.total_amount ?? 0;
         ws.getCell(r, 8).value = i.remark || '';
         ws.getCell(r, 9).value = '';
+        ws.getCell(r, 1).alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getCell(r, 2).alignment = { horizontal: 'left', vertical: 'middle' };
+        ws.getCell(r, 3).alignment = { horizontal: 'left', vertical: 'middle' };
+        ws.getCell(r, 4).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        ws.getCell(r, 5).alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getCell(r, 6).alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getCell(r, 7).alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getCell(r, 8).alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getCell(r, 9).alignment = { horizontal: 'center', vertical: 'middle' };
         for (let c = 1; c <= 9; c++) ws.getCell(r, c).font = { size: 10 };
         ws.getCell(r, 4).font = { size: 9 };
         [5, 6, 7].forEach(c => { ws.getCell(r, c).font = { size: 11 }; });
@@ -2833,7 +2844,7 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
       ws.getCell(submitterRow + 4, 1).alignment = { horizontal: 'center', vertical: 'middle' };
       ws.getCell(submitterRow + 4, 1).font = { size: 12 };
       ws.getRow(submitterRow + 4).height = 24;
-      ws.pageSetup.printArea = `A1:I${submitterRow + 4}`;
+      ws.pageSetup.printArea = `A1:O${submitterRow + 4}`;
     };
 
     const wb = new ExcelJS.Workbook();
