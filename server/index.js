@@ -2759,9 +2759,13 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
         totalAmt += i.total_amount ?? 0;
         [5, 6, 7].forEach(col => { ws.getCell(r, col).numFmt = '#,##0'; });
       });
-      let dataEndRow = sheetItems.length > 0 ? dataStartRow + sheetItems.length - 1 : headerRow;
+      const dataEndRow = sheetItems.length > 0 ? dataStartRow + sheetItems.length - 1 : headerRow;
+      let tableEndRow = dataEndRow;
       if (sheetItems.length > 0) {
-        const totalRow = dataEndRow + 1;
+        // 캡쳐 양식: 데이터 마지막 행 다음 1줄은 공백, 그 다음 줄에 합계
+        const blankRow = dataEndRow + 1;
+        const totalRow = dataEndRow + 2;
+        for (let c = 1; c <= 9; c++) ws.getCell(blankRow, c).border = {};
         ws.mergeCells(totalRow, 1, totalRow, 2);
         ws.getCell(totalRow, 1).value = '합계';
         ws.getCell(totalRow, 5).value = totalCardAmt;
@@ -2769,11 +2773,12 @@ app.get('/api/export/batch-approval-excel', async (req, res) => {
         ws.getCell(totalRow, 7).value = totalAmt;
         [5, 6, 7].forEach(col => { ws.getCell(totalRow, col).numFmt = '#,##0'; });
         applyGridBorders(ws, totalRow, 1, totalRow, 9);
-        dataEndRow = totalRow;
+        tableEndRow = totalRow;
       }
+      // 표 테두리는 헤더~데이터 구간과 합계행에만 적용 (중간 공백행/하단 안내문은 무테)
       applyGridBorders(ws, headerRow, 1, dataEndRow, 9);
 
-      const submitterRow = dataEndRow + 3;
+      const submitterRow = tableEndRow + 3;
       // 하단 제출 문구 영역은 캡처 양식처럼 무테 + 가운데 정렬로 고정
       for (let r = submitterRow; r <= submitterRow + 4; r++) {
         for (let c = 1; c <= 9; c++) {
